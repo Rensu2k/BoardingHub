@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import {
   Alert,
   Dimensions,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
@@ -18,16 +19,44 @@ import { ThemedView } from "@/components/ThemedView";
 import { Colors } from "@/constants/Colors";
 import { auth, db } from "@/constants/firebase";
 import { useColorScheme } from "@/hooks/useColorScheme";
+import { usePullRefresh } from "@/hooks/usePullRefresh";
 
 const { width } = Dimensions.get("window");
 
 export default function LandlordDashboard() {
-  const [refreshing, setRefreshing] = useState(false);
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
+
+  // Refresh function to reload dashboard data
+  const refreshDashboard = async () => {
+    try {
+      // Simulate fetching fresh data
+      console.log("Refreshing landlord dashboard data...");
+
+      // In a real app, you would:
+      // - Refetch user profile
+      // - Update dashboard stats from API/Firebase
+      // - Refresh recent activities
+      // - Update KPI data
+
+      // For now, we'll just refresh the user profile
+      const user = auth.currentUser;
+      if (user) {
+        const userDoc = await getDoc(doc(db, "users", user.uid));
+        if (userDoc.exists()) {
+          setUserProfile(userDoc.data());
+        }
+      }
+    } catch (error) {
+      console.error("Error refreshing dashboard:", error);
+    }
+  };
+
+  // Use the pull refresh hook
+  const { refreshing, onRefresh } = usePullRefresh(refreshDashboard);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -141,8 +170,7 @@ export default function LandlordDashboard() {
     {
       title: "Send Reminder",
       icon: "notifications-outline",
-      action: () =>
-        Alert.alert("Coming Soon", "Notification system coming soon!"),
+      action: () => router.push("/landlord/notifications/compose"),
     },
     {
       title: "Generate Report",
@@ -183,6 +211,14 @@ export default function LandlordDashboard() {
       <ScrollView
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.tint}
+            colors={[colors.tint]}
+          />
+        }
       >
         {/* Header */}
         <ThemedView style={styles.header}>
@@ -209,56 +245,43 @@ export default function LandlordDashboard() {
           </View>
         </ThemedView>
 
-        {/* Stats Cards */}
-        <ThemedView style={styles.statsSection}>
-          <ThemedText style={styles.sectionTitle}>Overview</ThemedText>
-          <View style={styles.statsGrid}>
+        {/* KPI Cards - Horizontal Scroll */}
+        <ThemedView style={styles.kpiSection}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.kpiScrollContent}
+          >
             {dashboardStats.map((stat, index) => (
-              <View
+              <TouchableOpacity
                 key={index}
-                style={[styles.statCard, { backgroundColor: colors.card }]}
+                style={[styles.kpiCard, { backgroundColor: colors.card }]}
+                onPress={() => {
+                  // Navigate to relevant screens based on KPI type
+                  if (stat.title.includes("Properties")) {
+                    router.push("/landlord/properties");
+                  } else if (stat.title.includes("Tenants")) {
+                    router.push("/landlord/tenants");
+                  } else if (stat.title.includes("Pending")) {
+                    router.push("/landlord/billing");
+                  }
+                }}
               >
                 <View
                   style={[
-                    styles.statIcon,
+                    styles.kpiIcon,
                     { backgroundColor: stat.color + "20" },
                   ]}
                 >
-                  <Ionicons name={stat.icon} size={24} color={stat.color} />
+                  <Ionicons name={stat.icon} size={28} color={stat.color} />
                 </View>
-                <View style={styles.statContent}>
-                  <ThemedText style={styles.statValue}>{stat.value}</ThemedText>
-                  <ThemedText style={styles.statTitle}>{stat.title}</ThemedText>
+                <View style={styles.kpiContent}>
+                  <ThemedText style={styles.kpiValue}>{stat.value}</ThemedText>
+                  <ThemedText style={styles.kpiTitle}>{stat.title}</ThemedText>
                 </View>
-              </View>
-            ))}
-          </View>
-        </ThemedView>
-
-        {/* Quick Actions */}
-        <ThemedView style={styles.actionsSection}>
-          <ThemedText style={styles.sectionTitle}>Quick Actions</ThemedText>
-          <View style={styles.actionsGrid}>
-            {quickActions.map((action, index) => (
-              <TouchableOpacity
-                key={index}
-                style={[styles.actionCard, { backgroundColor: colors.card }]}
-                onPress={action.action}
-              >
-                <View
-                  style={[
-                    styles.actionIcon,
-                    { backgroundColor: colors.tint + "20" },
-                  ]}
-                >
-                  <Ionicons name={action.icon} size={28} color={colors.tint} />
-                </View>
-                <ThemedText style={styles.actionTitle}>
-                  {action.title}
-                </ThemedText>
               </TouchableOpacity>
             ))}
-          </View>
+          </ScrollView>
         </ThemedView>
 
         {/* Recent Activity */}
@@ -294,7 +317,46 @@ export default function LandlordDashboard() {
             ))}
           </View>
         </ThemedView>
+
+        {/* Quick Actions */}
+        <ThemedView style={styles.actionsSection}>
+          <ThemedText style={styles.sectionTitle}>Quick Actions</ThemedText>
+          <View style={styles.actionsGrid}>
+            {quickActions.map((action, index) => (
+              <TouchableOpacity
+                key={index}
+                style={[styles.actionCard, { backgroundColor: colors.card }]}
+                onPress={action.action}
+              >
+                <View
+                  style={[
+                    styles.actionIcon,
+                    { backgroundColor: colors.tint + "20" },
+                  ]}
+                >
+                  <Ionicons name={action.icon} size={28} color={colors.tint} />
+                </View>
+                <ThemedText style={styles.actionTitle}>
+                  {action.title}
+                </ThemedText>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </ThemedView>
       </ScrollView>
+
+      {/* FAB */}
+      <TouchableOpacity
+        style={[styles.fab, { backgroundColor: colors.tint }]}
+        onPress={() =>
+          Alert.alert(
+            "Quick Add",
+            "Choose what to add: Property, Room, or Bill"
+          )
+        }
+      >
+        <Ionicons name="add" size={24} color="white" />
+      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -440,5 +502,60 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+  },
+  kpiSection: {
+    padding: 20,
+    paddingBottom: 16,
+  },
+  kpiScrollContent: {
+    gap: 12,
+    paddingRight: 20,
+  },
+  kpiCard: {
+    width: 140,
+    padding: 16,
+    borderRadius: 12,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  kpiIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+  },
+  kpiContent: {
+    alignItems: "center",
+  },
+  kpiValue: {
+    fontSize: 24,
+    fontWeight: "bold",
+    marginBottom: 4,
+  },
+  kpiTitle: {
+    fontSize: 12,
+    opacity: 0.7,
+    textAlign: "center",
+  },
+  fab: {
+    position: "absolute",
+    bottom: 80,
+    right: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
   },
 });

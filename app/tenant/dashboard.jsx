@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import {
   Alert,
   Dimensions,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
@@ -18,16 +19,44 @@ import { ThemedView } from "@/components/ThemedView";
 import { Colors } from "@/constants/Colors";
 import { auth, db } from "@/constants/firebase";
 import { useColorScheme } from "@/hooks/useColorScheme";
+import { usePullRefresh } from "@/hooks/usePullRefresh";
 
 const { width } = Dimensions.get("window");
 
 export default function TenantDashboard() {
-  const [refreshing, setRefreshing] = useState(false);
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
+
+  // Refresh function to reload dashboard data
+  const refreshDashboard = async () => {
+    try {
+      // Simulate fetching fresh data
+      console.log("Refreshing tenant dashboard data...");
+
+      // In a real app, you would:
+      // - Refetch user profile
+      // - Update payment history from API/Firebase
+      // - Refresh utility bills
+      // - Update tenant stats
+
+      // For now, we'll just refresh the user profile
+      const user = auth.currentUser;
+      if (user) {
+        const userDoc = await getDoc(doc(db, "users", user.uid));
+        if (userDoc.exists()) {
+          setUserProfile(userDoc.data());
+        }
+      }
+    } catch (error) {
+      console.error("Error refreshing dashboard:", error);
+    }
+  };
+
+  // Use the pull refresh hook
+  const { refreshing, onRefresh } = usePullRefresh(refreshDashboard);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -208,6 +237,14 @@ export default function TenantDashboard() {
       <ScrollView
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.tint}
+            colors={[colors.tint]}
+          />
+        }
       >
         {/* Header */}
         <ThemedView style={styles.header}>

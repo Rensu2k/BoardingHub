@@ -7,6 +7,7 @@ A comprehensive boarding house management system built with React Native and Exp
 BoardingHub is a mobile application designed to streamline boarding house management for both landlords and tenants. It provides separate dashboards for different user types with authentication and user management capabilities.
 
 ### Features
+
 - 🔐 **Firebase Authentication** - Secure login/signup system
 - 👥 **Dual User Types** - Separate interfaces for landlords and tenants
 - 📱 **Cross-Platform** - Works on iOS, Android, and Web
@@ -26,6 +27,7 @@ Before running this application, make sure you have the following installed:
 - **Expo CLI** (optional but recommended)
 
 For mobile development:
+
 - **Android Studio** (for Android development)
 - **Xcode** (for iOS development - Mac only)
 
@@ -42,7 +44,8 @@ cd BoardingHub
 npm install
 ```
 
-*Or if you prefer yarn:*
+_Or if you prefer yarn:_
+
 ```bash
 yarn install
 ```
@@ -63,6 +66,7 @@ EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID=your_measurement_id
 ```
 
 **⚠️ Important:** Get these values from your Firebase Console:
+
 1. Go to [Firebase Console](https://console.firebase.google.com/)
 2. Select your project (or create a new one)
 3. Go to Project Settings → General → Your apps
@@ -71,10 +75,12 @@ EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID=your_measurement_id
 ### 4. Firebase Setup
 
 1. **Enable Authentication:**
+
    - Go to Firebase Console → Authentication → Sign-in method
    - Enable "Email/Password" authentication
 
 2. **Setup Firestore Database:**
+
    - Go to Firebase Console → Firestore Database
    - Create database (start in test mode for development)
 
@@ -101,12 +107,14 @@ This will start the Metro bundler and show a QR code in your terminal.
 ### 6. Run on Your Device/Emulator
 
 #### Option A: Physical Device
+
 1. Install **Expo Go** app on your phone:
    - [iOS App Store](https://apps.apple.com/app/expo-go/id982107779)
    - [Google Play Store](https://play.google.com/store/apps/details?id=host.exp.exponent)
 2. Scan the QR code with your camera (iOS) or Expo Go app (Android)
 
 #### Option B: Android Emulator
+
 ```bash
 npm run android
 # or
@@ -114,6 +122,7 @@ npx expo run:android
 ```
 
 #### Option C: iOS Simulator (Mac only)
+
 ```bash
 npm run ios
 # or
@@ -121,6 +130,7 @@ npx expo run:ios
 ```
 
 #### Option D: Web Browser
+
 ```bash
 npm run web
 # or
@@ -164,11 +174,13 @@ BoardingHub/
 ## 👥 User Types
 
 ### Landlord Features
+
 - Property management dashboard
 - Tenant management
 - Property information tracking
 
 ### Tenant Features
+
 - Tenant dashboard
 - Profile management
 - Boarding house information
@@ -176,6 +188,7 @@ BoardingHub/
 ## 🔐 Authentication Flow
 
 1. **Signup Process:**
+
    - Choose user type (Tenant/Landlord)
    - Fill personal information
    - Additional fields based on user type
@@ -183,6 +196,7 @@ BoardingHub/
    - Profile storage in Firestore
 
 2. **Login Process:**
+
    - Email/password authentication
    - User type detection from Firestore
    - Automatic routing to appropriate dashboard
@@ -194,27 +208,33 @@ BoardingHub/
 ## 🛠️ Development
 
 ### Code Style
+
 This project uses ESLint for code quality. Run the linter with:
+
 ```bash
 npm run lint
 ```
 
 ### Environment Variables
+
 Never commit `.env` files to version control. The `.env` file contains sensitive Firebase configuration.
 
 ## 📱 Building for Production
 
 ### Android APK
+
 ```bash
 npx expo build:android
 ```
 
 ### iOS IPA
+
 ```bash
 npx expo build:ios
 ```
 
 ### Web Build
+
 ```bash
 npx expo export:web
 ```
@@ -224,17 +244,20 @@ npx expo export:web
 ### Common Issues
 
 1. **Metro bundler won't start:**
+
    ```bash
    npx expo start --clear
    ```
 
 2. **Dependencies issues:**
+
    ```bash
    rm -rf node_modules
    npm install
    ```
 
 3. **Firebase connection issues:**
+
    - Verify your `.env` file configuration
    - Check Firebase project settings
    - Ensure authentication is enabled
@@ -266,6 +289,7 @@ If you encounter any issues or have questions:
 ## 🚀 Deployment
 
 This app can be deployed using:
+
 - **Expo Application Services (EAS)** for app store distribution
 - **Expo Web** for web deployment
 - **Firebase Hosting** for web hosting

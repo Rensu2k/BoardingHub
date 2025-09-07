@@ -113,11 +113,6 @@ export default function LoginScreen() {
     }
   };
 
-  const handleSocialLogin = (provider) => {
-    // Implement social login logic here
-    Alert.alert("Coming Soon", `${provider} login will be available soon!`);
-  };
-
   const handleForgotPassword = async () => {
     if (!email.trim()) {
       Alert.alert(
@@ -337,64 +332,6 @@ export default function LoginScreen() {
               )}
             </TouchableOpacity>
 
-            {/* Divider */}
-            <View style={styles.divider}>
-              <View
-                style={[styles.dividerLine, { backgroundColor: colors.border }]}
-              />
-              <ThemedText style={styles.dividerText}>or</ThemedText>
-              <View
-                style={[styles.dividerLine, { backgroundColor: colors.border }]}
-              />
-            </View>
-
-            {/* Social Login Buttons */}
-            <View style={styles.socialButtons}>
-              <TouchableOpacity
-                style={[
-                  styles.socialButton,
-                  {
-                    borderColor: colors.border,
-                    backgroundColor: colors.card,
-                  },
-                ]}
-                onPress={() => handleSocialLogin("Google")}
-              >
-                <Ionicons name="logo-google" size={20} color="#DB4437" />
-                <ThemedText style={styles.socialButtonText}>Google</ThemedText>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.socialButton,
-                  {
-                    borderColor: colors.border,
-                    backgroundColor: colors.card,
-                  },
-                ]}
-                onPress={() => handleSocialLogin("Apple")}
-              >
-                <Ionicons name="logo-apple" size={20} color={colors.text} />
-                <ThemedText style={styles.socialButtonText}>Apple</ThemedText>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.socialButton,
-                  {
-                    borderColor: colors.border,
-                    backgroundColor: colors.card,
-                  },
-                ]}
-                onPress={() => handleSocialLogin("Facebook")}
-              >
-                <Ionicons name="logo-facebook" size={20} color="#4267B2" />
-                <ThemedText style={styles.socialButtonText}>
-                  Facebook
-                </ThemedText>
-              </TouchableOpacity>
-            </View>
-
             {/* Sign Up Link */}
             <View style={styles.signupContainer}>
               <ThemedText style={styles.signupText}>
@@ -525,37 +462,6 @@ const styles = StyleSheet.create({
   loginButtonText: {
     fontSize: 16,
     fontWeight: "600",
-  },
-  divider: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 24,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-  },
-  dividerText: {
-    paddingHorizontal: 16,
-    fontSize: 14,
-    opacity: 0.6,
-  },
-  socialButtons: {
-    gap: 12,
-    marginBottom: 32,
-  },
-  socialButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 14,
-    gap: 12,
-  },
-  socialButtonText: {
-    fontSize: 16,
-    fontWeight: "500",
   },
   signupContainer: {
     flexDirection: "row",
