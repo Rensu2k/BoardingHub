@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import {
   Alert,
   Dimensions,
+  Image,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -158,23 +159,55 @@ export default function TenantDashboard() {
     },
   ];
 
-  const quickActions = [
+  const browseListings = [
     {
-      title: "Pay Rent",
-      icon: "card-outline",
-      action: () => Alert.alert("Payment", "Payment system coming soon!"),
-      color: "#007AFF",
+      roomNumber: "B-102",
+      type: "Single Room",
+      rent: "₱4,500/month",
+      available: true,
+      image: "https://via.placeholder.com/200x120/7ED321/FFFFFF?text=B-102",
     },
     {
-      title: "Upload Receipt",
+      roomNumber: "A-203",
+      type: "Double Room",
+      rent: "₱6,500/month",
+      available: true,
+      image: "https://via.placeholder.com/200x120/50E3C2/FFFFFF?text=A-203",
+    },
+    {
+      roomNumber: "C-105",
+      type: "Studio",
+      rent: "₱7,000/month",
+      available: false,
+      image: "https://via.placeholder.com/200x120/BD10E0/FFFFFF?text=C-105",
+    },
+    {
+      roomNumber: "B-201",
+      type: "Single Room",
+      rent: "₱5,200/month",
+      available: true,
+      image: "https://via.placeholder.com/200x120/F5A623/FFFFFF?text=B-201",
+    },
+  ];
+
+  const quickActions = [
+    {
+      title: "Upload Payment Proof",
       icon: "cloud-upload-outline",
       action: () => Alert.alert("Upload", "Receipt upload coming soon!"),
       color: "#34C759",
     },
     {
-      title: "Service Request",
+      title: "View Bills",
+      icon: "receipt-outline",
+      action: () => router.push("/tenant/(tabs)/bills"),
+      color: "#007AFF",
+    },
+    {
+      title: "Report Maintenance",
       icon: "construct-outline",
-      action: () => Alert.alert("Service", "Maintenance request coming soon!"),
+      action: () =>
+        Alert.alert("Maintenance", "Maintenance request coming soon!"),
       color: "#FF9500",
     },
     {
@@ -249,50 +282,178 @@ export default function TenantDashboard() {
         {/* Header */}
         <ThemedView style={styles.header}>
           <View style={styles.headerContent}>
-            <View>
+            <View style={styles.greetingSection}>
               <ThemedText style={styles.greeting}>Good morning,</ThemedText>
               <ThemedText style={styles.tenantName}>
                 {userProfile
                   ? `${userProfile.firstName} ${userProfile.lastName}`
                   : "Tenant"}
               </ThemedText>
+              <ThemedText style={styles.propertyName}>
+                Sunrise Boarding House
+              </ThemedText>
             </View>
             <TouchableOpacity
-              style={[styles.profileButton, { backgroundColor: colors.tint }]}
-              onPress={handleLogout}
+              style={styles.notificationButton}
+              onPress={() =>
+                Alert.alert("Notifications", "No new notifications")
+              }
             >
-              <Ionicons name="log-out-outline" size={24} color="white" />
+              <Ionicons
+                name="notifications-outline"
+                size={24}
+                color={colors.text}
+              />
+              <View style={styles.notificationBadge}>
+                <ThemedText style={styles.badgeText}>3</ThemedText>
+              </View>
             </TouchableOpacity>
           </View>
         </ThemedView>
 
-        {/* Room & Rent Stats */}
-        <ThemedView style={styles.statsSection}>
-          <ThemedText style={styles.sectionTitle}>My Room</ThemedText>
-          <View style={styles.statsGrid}>
-            {tenantStats.map((stat, index) => (
-              <View
-                key={index}
-                style={[styles.statCard, { backgroundColor: colors.card }]}
-              >
-                <View
-                  style={[
-                    styles.statIcon,
-                    { backgroundColor: stat.color + "20" },
-                  ]}
-                >
-                  <Ionicons name={stat.icon} size={24} color={stat.color} />
-                </View>
-                <View style={styles.statContent}>
-                  <ThemedText style={styles.statValue}>{stat.value}</ThemedText>
-                  <ThemedText style={styles.statTitle}>{stat.title}</ThemedText>
-                  <ThemedText style={styles.statSubtitle}>
-                    {stat.subtitle}
-                  </ThemedText>
-                </View>
+        {/* Upcoming Due Summary */}
+        <ThemedView style={styles.dueSection}>
+          <View style={[styles.dueCard, { backgroundColor: colors.card }]}>
+            <View style={styles.dueInfo}>
+              <View style={styles.dueAmount}>
+                <ThemedText style={styles.dueLabel}>
+                  Next Payment Due
+                </ThemedText>
+                <ThemedText style={styles.dueValue}>₱5,850</ThemedText>
+                <ThemedText style={styles.dueDays}>
+                  in 5 days (Dec 15)
+                </ThemedText>
               </View>
-            ))}
+              <TouchableOpacity
+                style={[
+                  styles.quickPayButton,
+                  { backgroundColor: colors.tint },
+                ]}
+                onPress={() => {
+                  // Navigate to bills tab for quick payment
+                  router.push("/tenant/(tabs)/bills");
+                }}
+              >
+                <Ionicons name="flash" size={16} color="white" />
+                <ThemedText style={styles.quickPayText}>Quick Pay</ThemedText>
+              </TouchableOpacity>
+            </View>
           </View>
+        </ThemedView>
+
+        {/* Active Room Listing */}
+        <ThemedView style={styles.activeRoomSection}>
+          <ThemedText style={styles.sectionTitle}>My Active Room</ThemedText>
+          <View
+            style={[styles.activeRoomCard, { backgroundColor: colors.card }]}
+          >
+            <View style={styles.roomImageContainer}>
+              <Image
+                source={{
+                  uri: "https://via.placeholder.com/120x80/4A90E2/FFFFFF?text=Room+A-101",
+                }}
+                style={styles.roomImage}
+              />
+              <View style={styles.roomBadge}>
+                <ThemedText style={styles.roomBadgeText}>A-101</ThemedText>
+              </View>
+            </View>
+            <View style={styles.roomDetails}>
+              <ThemedText style={styles.roomTitle}>
+                Single Room - 2nd Floor
+              </ThemedText>
+              <ThemedText style={styles.roomRent}>₱5,000/month</ThemedText>
+              <View style={styles.landlordInfo}>
+                <Ionicons
+                  name="person-circle-outline"
+                  size={16}
+                  color={colors.text}
+                />
+                <ThemedText style={styles.landlordName}>
+                  Ms. Maria Santos
+                </ThemedText>
+                <TouchableOpacity
+                  style={styles.contactButton}
+                  onPress={() => Alert.alert("Contact", "Calling landlord...")}
+                >
+                  <Ionicons name="call" size={14} color={colors.tint} />
+                </TouchableOpacity>
+              </View>
+              <View style={styles.lastBillInfo}>
+                <Ionicons name="receipt-outline" size={16} color="#FF9500" />
+                <ThemedText style={styles.lastBillText}>
+                  Last bill: Dec 2024 - ₱5,850
+                </ThemedText>
+              </View>
+            </View>
+          </View>
+        </ThemedView>
+
+        {/* Browse Listings */}
+        <ThemedView style={styles.browseSection}>
+          <View style={styles.sectionHeader}>
+            <ThemedText style={styles.sectionTitle}>
+              Browse Available Rooms
+            </ThemedText>
+            <TouchableOpacity onPress={() => router.push("/tenant/browse")}>
+              <ThemedText style={[styles.viewAllText, { color: colors.tint }]}>
+                View All
+              </ThemedText>
+            </TouchableOpacity>
+          </View>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.browseCarousel}
+            contentContainerStyle={styles.browseContent}
+          >
+            {browseListings.map((listing, index) => (
+              <TouchableOpacity
+                key={index}
+                style={[styles.browseCard, { backgroundColor: colors.card }]}
+                onPress={() =>
+                  Alert.alert("Room Details", `Viewing ${listing.roomNumber}`)
+                }
+              >
+                <Image
+                  source={{ uri: listing.image }}
+                  style={styles.browseImage}
+                />
+                <View style={styles.browseDetails}>
+                  <ThemedText style={styles.browseRoomNumber}>
+                    {listing.roomNumber}
+                  </ThemedText>
+                  <ThemedText style={styles.browseRoomType}>
+                    {listing.type}
+                  </ThemedText>
+                  <ThemedText style={styles.browseRent}>
+                    {listing.rent}
+                  </ThemedText>
+                  <View
+                    style={[
+                      styles.browseStatus,
+                      {
+                        backgroundColor: listing.available
+                          ? "#34C75920"
+                          : "#FF950020",
+                      },
+                    ]}
+                  >
+                    <ThemedText
+                      style={[
+                        styles.browseStatusText,
+                        {
+                          color: listing.available ? "#34C759" : "#FF9500",
+                        },
+                      ]}
+                    >
+                      {listing.available ? "Available" : "Occupied"}
+                    </ThemedText>
+                  </View>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
         </ThemedView>
 
         {/* Quick Actions */}
@@ -454,12 +615,191 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     marginTop: 4,
   },
-  profileButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: "center",
+  propertyName: {
+    fontSize: 14,
+    opacity: 0.6,
+    marginTop: 2,
+  },
+  notificationButton: {
+    position: "relative",
+  },
+  notificationBadge: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    backgroundColor: "#FF3B30",
+    borderRadius: 8,
+    minWidth: 16,
+    height: 16,
     justifyContent: "center",
+    alignItems: "center",
+  },
+  badgeText: {
+    color: "white",
+    fontSize: 10,
+    fontWeight: "600",
+  },
+  greetingSection: {
+    flex: 1,
+  },
+  dueSection: {
+    padding: 16,
+    paddingTop: 0,
+  },
+  dueCard: {
+    padding: 16,
+    borderRadius: 12,
+  },
+  dueInfo: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  dueAmount: {
+    flex: 1,
+  },
+  dueLabel: {
+    fontSize: 14,
+    opacity: 0.7,
+    marginBottom: 4,
+  },
+  dueValue: {
+    fontSize: 24,
+    fontWeight: "bold",
+    color: "#FF9500",
+    marginBottom: 4,
+  },
+  dueDays: {
+    fontSize: 14,
+    opacity: 0.8,
+  },
+  quickPayButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 20,
+    gap: 6,
+  },
+  quickPayText: {
+    color: "white",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  activeRoomSection: {
+    padding: 16,
+  },
+  activeRoomCard: {
+    padding: 16,
+    borderRadius: 12,
+    flexDirection: "row",
+    gap: 16,
+  },
+  roomImageContainer: {
+    position: "relative",
+  },
+  roomImage: {
+    width: 120,
+    height: 80,
+    borderRadius: 8,
+  },
+  roomBadge: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  roomBadgeText: {
+    color: "white",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  roomDetails: {
+    flex: 1,
+    gap: 8,
+  },
+  roomTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  roomRent: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#007AFF",
+  },
+  landlordInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  landlordName: {
+    fontSize: 14,
+    flex: 1,
+  },
+  contactButton: {
+    padding: 6,
+    borderRadius: 12,
+    backgroundColor: "#007AFF20",
+  },
+  lastBillInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  lastBillText: {
+    fontSize: 12,
+    opacity: 0.8,
+  },
+  browseSection: {
+    padding: 16,
+  },
+  browseCarousel: {
+    marginHorizontal: -16,
+  },
+  browseContent: {
+    paddingHorizontal: 16,
+    gap: 12,
+  },
+  browseCard: {
+    width: 160,
+    borderRadius: 12,
+    overflow: "hidden",
+  },
+  browseImage: {
+    width: "100%",
+    height: 100,
+  },
+  browseDetails: {
+    padding: 12,
+  },
+  browseRoomNumber: {
+    fontSize: 16,
+    fontWeight: "600",
+    marginBottom: 4,
+  },
+  browseRoomType: {
+    fontSize: 12,
+    opacity: 0.7,
+    marginBottom: 4,
+  },
+  browseRent: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#007AFF",
+    marginBottom: 8,
+  },
+  browseStatus: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignSelf: "flex-start",
+  },
+  browseStatusText: {
+    fontSize: 10,
+    fontWeight: "600",
   },
   statsSection: {
     padding: 20,

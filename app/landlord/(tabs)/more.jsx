@@ -1,6 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { onAuthStateChanged } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
+import { useEffect, useState } from "react";
 import {
   Alert,
   Dimensions,
@@ -14,16 +16,42 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import { Colors } from "@/constants/Colors";
+import { auth, db } from "@/constants/firebase";
 import { useColorScheme } from "@/hooks/useColorScheme";
-import { currentUser } from "../data/userData";
 
 const { width } = Dimensions.get("window");
 
 export default function MoreScreen() {
   const [refreshing, setRefreshing] = useState(false);
+  const [userProfile, setUserProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
   const router = useRouter();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
+
+  // Fetch user data from Firebase
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        try {
+          const userDoc = await getDoc(doc(db, "users", user.uid));
+          if (userDoc.exists()) {
+            setUserProfile(userDoc.data());
+          } else {
+            console.log("User profile not found");
+            router.replace("/auth/login");
+          }
+        } catch (error) {
+          console.error("Error fetching user profile:", error);
+        }
+      } else {
+        router.replace("/auth/login");
+      }
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   const menuItems = [
     {
@@ -108,6 +136,18 @@ export default function MoreScreen() {
     ]);
   };
 
+  if (loading) {
+    return (
+      <SafeAreaView
+        style={[styles.container, { backgroundColor: colors.background }]}
+      >
+        <View style={styles.loadingContainer}>
+          <ThemedText>Loading...</ThemedText>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: colors.background }]}
@@ -154,13 +194,15 @@ export default function MoreScreen() {
 
             <View style={styles.profileInfo}>
               <ThemedText style={styles.profileName}>
-                {currentUser.name}
+                {userProfile
+                  ? `${userProfile.firstName} ${userProfile.lastName}`
+                  : "Loading..."}
               </ThemedText>
               <ThemedText style={styles.profileEmail}>
-                {currentUser.email}
+                {userProfile?.email || "Loading..."}
               </ThemedText>
               <ThemedText style={styles.profileProperties}>
-                {currentUser.properties} Properties Managed
+                {userProfile?.totalRooms || 0} Properties Managed
               </ThemedText>
             </View>
 
@@ -336,5 +378,10 @@ const styles = StyleSheet.create({
   versionText: {
     fontSize: 14,
     opacity: 0.5,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
   },
 });

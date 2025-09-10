@@ -80,7 +80,12 @@ export default function LoginScreen() {
         Alert.alert(
           "Success",
           `Welcome back, ${userProfile?.firstName || "Tenant"}!`,
-          [{ text: "OK", onPress: () => router.replace("/tenant/dashboard") }]
+          [
+            {
+              text: "OK",
+              onPress: () => router.replace("/tenant/(tabs)/dashboard"),
+            },
+          ]
         );
       } else if (userTypeFromDB === "landlord") {
         Alert.alert(

@@ -1,6 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { onAuthStateChanged } from "firebase/auth";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { useEffect, useState } from "react";
 import {
   Alert,
   ScrollView,
@@ -14,32 +16,154 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ThemedText } from "@/components/ThemedText";
 import { Colors } from "@/constants/Colors";
+import { auth, db } from "@/constants/firebase";
 import { useColorScheme } from "@/hooks/useColorScheme";
-import { currentUser } from "../data/userData";
+
+// Move ProfileField component outside to prevent re-creation
+const ProfileField = ({
+  label,
+  value,
+  field,
+  placeholder,
+  keyboardType = "default",
+  multiline = false,
+  isEditing,
+  colors,
+  styles,
+  formData,
+  updateFormField,
+}) => (
+  <View style={styles.fieldContainer}>
+    <ThemedText style={styles.fieldLabel}>{label}</ThemedText>
+    {isEditing ? (
+      <TextInput
+        style={[
+          styles.fieldInput,
+          {
+            backgroundColor: colors.card,
+            color: colors.text,
+            borderColor: colors.border,
+          },
+        ]}
+        value={formData[field]}
+        onChangeText={(text) => updateFormField(field, text)}
+        placeholder={placeholder}
+        placeholderTextColor={colors.text + "60"}
+        keyboardType={keyboardType}
+        multiline={multiline}
+        maxLength={field === "bio" ? 200 : 100}
+      />
+    ) : (
+      <ThemedText style={styles.fieldValue}>{value}</ThemedText>
+    )}
+  </View>
+);
 
 export default function ProfileScreen() {
   const [isEditing, setIsEditing] = useState(false);
+  const [userProfile, setUserProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [formData, setFormData] = useState({
-    ...currentUser,
+    fullName: "",
+    email: "",
+    phone: "",
+    gcash: "",
+    propertyName: "",
+    propertyAddress: "",
+    totalRooms: "",
+    website: "",
+    bio: "",
   });
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [emailUpdates, setEmailUpdates] = useState(true);
   const [marketingEmails, setMarketingEmails] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const router = useRouter();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
 
-  const handleSave = () => {
-    Alert.alert("Success", "Profile updated successfully!");
-    setIsEditing(false);
+  const handleSave = async () => {
+    if (!auth.currentUser) {
+      Alert.alert("Error", "You must be logged in to update your profile.");
+      return;
+    }
+
+    // Basic validation
+    if (!formData.fullName.trim()) {
+      Alert.alert("Error", "Full name is required.");
+      return;
+    }
+
+    if (!formData.email.trim()) {
+      Alert.alert("Error", "Email is required.");
+      return;
+    }
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email.trim())) {
+      Alert.alert("Error", "Please enter a valid email address.");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      // Update user document in Firestore
+      const userDocRef = doc(db, "users", auth.currentUser.uid);
+      await updateDoc(userDocRef, {
+        fullName: formData.fullName.trim(),
+        email: formData.email.trim(),
+        phone: formData.phone.trim(),
+        gcash: formData.gcash.trim(),
+        propertyName: formData.propertyName.trim(),
+        propertyAddress: formData.propertyAddress.trim(),
+        totalRooms: formData.totalRooms ? parseInt(formData.totalRooms) : null,
+        website: formData.website.trim(),
+        bio: formData.bio.trim(),
+        updatedAt: new Date().toISOString(),
+      });
+
+      // Update local userProfile state
+      setUserProfile((prev) => ({
+        ...prev,
+        ...formData,
+        totalRooms: formData.totalRooms ? parseInt(formData.totalRooms) : null,
+      }));
+
+      Alert.alert("Success", "Profile updated successfully!");
+      setIsEditing(false);
+    } catch (error) {
+      console.error("Error updating profile:", error);
+      Alert.alert(
+        "Error",
+        "Failed to update profile. Please check your connection and try again."
+      );
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleCancel = () => {
     // Reset form data to original values
-    setFormData({
-      ...currentUser,
-    });
+    if (userProfile) {
+      setFormData({
+        fullName:
+          userProfile.fullName ||
+          `${userProfile.firstName || ""} ${
+            userProfile.lastName || ""
+          }`.trim() ||
+          "",
+        email: userProfile.email || "",
+        phone: userProfile.phone || "",
+        gcash: userProfile.gcash || "",
+        propertyName: userProfile.propertyName || "",
+        propertyAddress: userProfile.propertyAddress || "",
+        totalRooms: userProfile.totalRooms || "",
+        website: userProfile.website || "",
+        bio: userProfile.bio || "",
+      });
+    }
     setIsEditing(false);
   };
 
@@ -50,39 +174,48 @@ export default function ProfileScreen() {
     }));
   };
 
-  const ProfileField = ({
-    label,
-    value,
-    field,
-    placeholder,
-    keyboardType = "default",
-    multiline = false,
-  }) => (
-    <View style={styles.fieldContainer}>
-      <ThemedText style={styles.fieldLabel}>{label}</ThemedText>
-      {isEditing ? (
-        <TextInput
-          style={[
-            styles.fieldInput,
-            {
-              backgroundColor: colors.card,
-              color: colors.text,
-              borderColor: colors.border,
-            },
-          ]}
-          value={formData[field]}
-          onChangeText={(text) => updateFormField(field, text)}
-          placeholder={placeholder}
-          placeholderTextColor={colors.text + "60"}
-          keyboardType={keyboardType}
-          multiline={multiline}
-          maxLength={field === "bio" ? 200 : 100}
-        />
-      ) : (
-        <ThemedText style={styles.fieldValue}>{value}</ThemedText>
-      )}
-    </View>
-  );
+  // Fetch user data from Firebase
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        try {
+          const userDoc = await getDoc(doc(db, "users", user.uid));
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            setUserProfile(userData);
+
+            // Update form data with real user data
+            setFormData({
+              fullName:
+                userData.fullName ||
+                `${userData.firstName || ""} ${
+                  userData.lastName || ""
+                }`.trim() ||
+                "",
+              email: userData.email || "",
+              phone: userData.phone || "",
+              gcash: userData.gcash || "",
+              propertyName: userData.propertyName || "",
+              propertyAddress: userData.propertyAddress || "",
+              totalRooms: userData.totalRooms || "",
+              website: userData.website || "",
+              bio: userData.bio || "",
+            });
+          } else {
+            console.log("User profile not found");
+            router.replace("/auth/login");
+          }
+        } catch (error) {
+          console.error("Error fetching user profile:", error);
+        }
+      } else {
+        router.replace("/auth/login");
+      }
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   const SettingToggle = ({ title, subtitle, value, onValueChange }) => (
     <View style={[styles.settingItem, { backgroundColor: colors.card }]}>
@@ -100,6 +233,18 @@ export default function ProfileScreen() {
       />
     </View>
   );
+
+  if (loading) {
+    return (
+      <SafeAreaView
+        style={[styles.container, { backgroundColor: colors.background }]}
+      >
+        <View style={styles.loadingContainer}>
+          <ThemedText>Loading...</ThemedText>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView
@@ -158,9 +303,14 @@ export default function ProfileScreen() {
           >
             <ProfileField
               label="Full Name"
-              value={formData.name}
-              field="name"
+              value={formData.fullName}
+              field="fullName"
               placeholder="Enter your full name"
+              isEditing={isEditing}
+              colors={colors}
+              styles={styles}
+              formData={formData}
+              updateFormField={updateFormField}
             />
             <ProfileField
               label="Email"
@@ -168,6 +318,11 @@ export default function ProfileScreen() {
               field="email"
               placeholder="Enter your email"
               keyboardType="email-address"
+              isEditing={isEditing}
+              colors={colors}
+              styles={styles}
+              formData={formData}
+              updateFormField={updateFormField}
             />
             <ProfileField
               label="GCash Number"
@@ -175,6 +330,11 @@ export default function ProfileScreen() {
               field="gcash"
               placeholder="Enter your GCash number"
               keyboardType="phone-pad"
+              isEditing={isEditing}
+              colors={colors}
+              styles={styles}
+              formData={formData}
+              updateFormField={updateFormField}
             />
           </View>
         </View>
@@ -188,16 +348,38 @@ export default function ProfileScreen() {
             style={[styles.sectionContent, { backgroundColor: colors.card }]}
           >
             <ProfileField
-              label="Company Name"
-              value={formData.company}
-              field="company"
-              placeholder="Enter your company name"
+              label="Property Name"
+              value={formData.propertyName}
+              field="propertyName"
+              placeholder="Enter your property name"
+              isEditing={isEditing}
+              colors={colors}
+              styles={styles}
+              formData={formData}
+              updateFormField={updateFormField}
             />
             <ProfileField
-              label="Business Address"
-              value={formData.address}
-              field="address"
-              placeholder="Enter your business address"
+              label="Property Address"
+              value={formData.propertyAddress}
+              field="propertyAddress"
+              placeholder="Enter your property address"
+              isEditing={isEditing}
+              colors={colors}
+              styles={styles}
+              formData={formData}
+              updateFormField={updateFormField}
+            />
+            <ProfileField
+              label="Total Rooms"
+              value={formData.totalRooms?.toString() || ""}
+              field="totalRooms"
+              placeholder="Enter total number of rooms"
+              keyboardType="numeric"
+              isEditing={isEditing}
+              colors={colors}
+              styles={styles}
+              formData={formData}
+              updateFormField={updateFormField}
             />
             <ProfileField
               label="Website"
@@ -205,6 +387,11 @@ export default function ProfileScreen() {
               field="website"
               placeholder="Enter your website URL"
               keyboardType="url"
+              isEditing={isEditing}
+              colors={colors}
+              styles={styles}
+              formData={formData}
+              updateFormField={updateFormField}
             />
             <ProfileField
               label="Bio"
@@ -212,6 +399,11 @@ export default function ProfileScreen() {
               field="bio"
               placeholder="Tell us about yourself..."
               multiline={true}
+              isEditing={isEditing}
+              colors={colors}
+              styles={styles}
+              formData={formData}
+              updateFormField={updateFormField}
             />
           </View>
         </View>
@@ -303,11 +495,18 @@ export default function ProfileScreen() {
               </ThemedText>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.saveButton, { backgroundColor: colors.tint }]}
+              style={[
+                styles.saveButton,
+                {
+                  backgroundColor: saving ? colors.tint + "80" : colors.tint,
+                  opacity: saving ? 0.7 : 1,
+                },
+              ]}
               onPress={handleSave}
+              disabled={saving}
             >
               <ThemedText style={[styles.saveButtonText, { color: "white" }]}>
-                Save Changes
+                {saving ? "Saving..." : "Save Changes"}
               </ThemedText>
             </TouchableOpacity>
           </View>
@@ -489,5 +688,10 @@ const styles = StyleSheet.create({
   saveButtonText: {
     fontSize: 16,
     fontWeight: "600",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
   },
 });

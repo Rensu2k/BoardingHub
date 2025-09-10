@@ -13,7 +13,7 @@ export default function IndexScreen() {
         // User is authenticated, redirect to tenant dashboard by default
         // The dashboard will handle proper routing based on user type
         console.log("User authenticated, redirecting to dashboard...");
-        router.replace("/tenant/dashboard");
+        router.replace("/tenant/(tabs)/dashboard");
       } else {
         // User is not authenticated, redirect to login
         console.log("User not authenticated, redirecting to login...");

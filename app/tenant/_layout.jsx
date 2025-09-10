@@ -1,29 +1,22 @@
+import { OfflineIndicator } from "@/components/tenant";
 import { Stack } from "expo-router";
+import { View } from "react-native";
 
 export default function TenantLayout() {
   return (
-    <Stack
-      screenOptions={{
-        headerShown: false,
-        headerStyle: {
-          backgroundColor: "transparent",
-        },
-        headerTintColor: "transparent",
-        headerTitle: "",
-      }}
-    >
-      <Stack.Screen
-        name="dashboard"
-        options={{
+    <View style={{ flex: 1 }}>
+      <OfflineIndicator />
+      <Stack
+        screenOptions={{
           headerShown: false,
-          headerStyle: {
-            backgroundColor: "transparent",
-          },
-          headerTintColor: "transparent",
-          headerTitle: "",
-          title: "",
         }}
-      />
-    </Stack>
+      >
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="browse" />
+        <Stack.Screen name="payments" />
+        <Stack.Screen name="room-management" />
+        <Stack.Screen name="profile" />
+      </Stack>
+    </View>
   );
 }

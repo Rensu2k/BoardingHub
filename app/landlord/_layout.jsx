@@ -98,13 +98,6 @@ export default function LandlordLayout() {
         }}
       />
       <Stack.Screen
-        name="notifications"
-        options={{
-          headerShown: false,
-          presentation: "card",
-        }}
-      />
-      <Stack.Screen
         name="notifications/compose"
         options={{
           headerShown: false,
@@ -126,21 +119,7 @@ export default function LandlordLayout() {
         }}
       />
       <Stack.Screen
-        name="profile"
-        options={{
-          headerShown: false,
-          presentation: "card",
-        }}
-      />
-      <Stack.Screen
         name="profile/change-password"
-        options={{
-          headerShown: false,
-          presentation: "card",
-        }}
-      />
-      <Stack.Screen
-        name="settings"
         options={{
           headerShown: false,
           presentation: "card",

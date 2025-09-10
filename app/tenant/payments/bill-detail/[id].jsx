@@ -1,0 +1,670 @@
+import { Ionicons } from "@expo/vector-icons";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useState } from "react";
+import {
+  Alert,
+  Dimensions,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+
+import { ThemedText } from "@/components/ThemedText";
+import { ThemedView } from "@/components/ThemedView";
+import { StatusChip } from "@/components/tenant";
+import { Colors } from "@/constants/Colors";
+import { useColorScheme } from "@/hooks/useColorScheme";
+
+const { width } = Dimensions.get("window");
+
+export default function BillDetail() {
+  const { id } = useLocalSearchParams();
+  const router = useRouter();
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const colorScheme = useColorScheme();
+  const colors = Colors[colorScheme ?? "light"];
+
+  // Mock bill data - in real app, fetch by ID
+  const bill = {
+    id: parseInt(id),
+    invoiceId: "INV-2024-002",
+    month: "February 2024",
+    amount: 4500,
+    dueDate: "2024-02-15",
+    status: "due",
+    property: "Sunshine Apartments",
+    room: "A-101",
+    year: "2024",
+    issueDate: "2024-01-15",
+    description: "Monthly rent payment for Room A-101",
+    breakdown: [
+      { item: "Monthly Rent", amount: 4000 },
+      { item: "Maintenance Fee", amount: 300 },
+      { item: "Utilities", amount: 200 },
+    ],
+    landlord: {
+      name: "Ms. Maria Santos",
+      email: "maria.santos@email.com",
+      phone: "+63 912 345 6789",
+    },
+    paymentMethods: [
+      { type: "Bank Transfer", details: "BPI - Account: 1234567890" },
+      { type: "GCash", details: "09123456789" },
+      { type: "Cash", details: "Pay at property office" },
+    ],
+    notes:
+      "Please ensure payment is made before the due date to avoid late fees.",
+  };
+
+  const handleUploadProof = () => {
+    setShowUploadModal(true);
+  };
+
+  const handlePayNow = () => {
+    Alert.alert("Pay Now", "Payment system coming soon!");
+  };
+
+  const handleContactLandlord = () => {
+    Alert.alert("Contact Landlord", `Contact ${bill.landlord.name}?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Call",
+        onPress: () => Alert.alert("Calling", `Calling ${bill.landlord.phone}`),
+      },
+      {
+        text: "Email",
+        onPress: () => Alert.alert("Email", `Emailing ${bill.landlord.email}`),
+      },
+    ]);
+  };
+
+  const handleUploadDocument = (method) => {
+    Alert.alert("Upload", `${method} upload coming soon!`);
+    setShowUploadModal(false);
+  };
+
+  return (
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: colors.background }]}
+    >
+      {/* Header */}
+      <View style={[styles.header, { backgroundColor: colors.background }]}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => router.back()}
+        >
+          <Ionicons name="arrow-back" size={24} color={colors.text} />
+        </TouchableOpacity>
+        <ThemedText style={styles.headerTitle}>Bill Details</ThemedText>
+        <TouchableOpacity
+          style={styles.shareButton}
+          onPress={() => Alert.alert("Share", "Share bill coming soon!")}
+        >
+          <Ionicons name="share-outline" size={24} color={colors.text} />
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Bill Header */}
+        <ThemedView
+          style={[styles.billHeader, { backgroundColor: colors.card }]}
+        >
+          <View style={styles.billTitleSection}>
+            <ThemedText style={styles.invoiceId}>{bill.invoiceId}</ThemedText>
+            <StatusChip status={bill.status} />
+          </View>
+
+          <ThemedText style={styles.billMonth}>{bill.month}</ThemedText>
+          <ThemedText style={styles.billAmount}>
+            ₱{bill.amount.toLocaleString()}
+          </ThemedText>
+
+          <View style={styles.dateSection}>
+            <View style={styles.dateItem}>
+              <ThemedText style={styles.dateLabel}>Issue Date</ThemedText>
+              <ThemedText style={styles.dateValue}>
+                {new Date(bill.issueDate).toLocaleDateString()}
+              </ThemedText>
+            </View>
+            <View style={styles.dateItem}>
+              <ThemedText style={styles.dateLabel}>Due Date</ThemedText>
+              <ThemedText style={styles.dateValue}>
+                {new Date(bill.dueDate).toLocaleDateString()}
+              </ThemedText>
+            </View>
+          </View>
+        </ThemedView>
+
+        {/* Property Info */}
+        <ThemedView style={[styles.section, { backgroundColor: colors.card }]}>
+          <ThemedText style={styles.sectionTitle}>
+            Property Information
+          </ThemedText>
+          <View style={styles.propertyInfo}>
+            <View style={styles.propertyItem}>
+              <Ionicons name="business-outline" size={20} color={colors.text} />
+              <ThemedText style={styles.propertyText}>
+                {bill.property}
+              </ThemedText>
+            </View>
+            <View style={styles.propertyItem}>
+              <Ionicons name="home-outline" size={20} color={colors.text} />
+              <ThemedText style={styles.propertyText}>
+                Room {bill.room}
+              </ThemedText>
+            </View>
+          </View>
+        </ThemedView>
+
+        {/* Bill Breakdown */}
+        <ThemedView style={[styles.section, { backgroundColor: colors.card }]}>
+          <ThemedText style={styles.sectionTitle}>Bill Breakdown</ThemedText>
+          <View style={styles.breakdown}>
+            {bill.breakdown.map((item, index) => (
+              <View key={index} style={styles.breakdownItem}>
+                <ThemedText style={styles.breakdownLabel}>
+                  {item.item}
+                </ThemedText>
+                <ThemedText style={styles.breakdownAmount}>
+                  ₱{item.amount.toLocaleString()}
+                </ThemedText>
+              </View>
+            ))}
+            <View style={[styles.breakdownItem, styles.totalItem]}>
+              <ThemedText style={styles.totalLabel}>Total Amount</ThemedText>
+              <ThemedText style={styles.totalAmount}>
+                ₱{bill.amount.toLocaleString()}
+              </ThemedText>
+            </View>
+          </View>
+        </ThemedView>
+
+        {/* Payment Methods */}
+        <ThemedView style={[styles.section, { backgroundColor: colors.card }]}>
+          <ThemedText style={styles.sectionTitle}>Payment Methods</ThemedText>
+          <View style={styles.paymentMethods}>
+            {bill.paymentMethods.map((method, index) => (
+              <View key={index} style={styles.paymentMethod}>
+                <View style={styles.paymentIcon}>
+                  <Ionicons
+                    name={
+                      method.type === "Bank Transfer"
+                        ? "card-outline"
+                        : method.type === "GCash"
+                        ? "phone-portrait-outline"
+                        : "cash-outline"
+                    }
+                    size={20}
+                    color={colors.tint}
+                  />
+                </View>
+                <View style={styles.paymentInfo}>
+                  <ThemedText style={styles.paymentType}>
+                    {method.type}
+                  </ThemedText>
+                  <ThemedText style={styles.paymentDetails}>
+                    {method.details}
+                  </ThemedText>
+                </View>
+              </View>
+            ))}
+          </View>
+        </ThemedView>
+
+        {/* Landlord Contact */}
+        <ThemedView style={[styles.section, { backgroundColor: colors.card }]}>
+          <ThemedText style={styles.sectionTitle}>Landlord Contact</ThemedText>
+          <TouchableOpacity
+            style={styles.landlordContact}
+            onPress={handleContactLandlord}
+          >
+            <View
+              style={[
+                styles.landlordAvatar,
+                { backgroundColor: colors.tint + "20" },
+              ]}
+            >
+              <ThemedText
+                style={[styles.landlordInitials, { color: colors.tint }]}
+              >
+                {bill.landlord.name
+                  .split(" ")
+                  .map((n) => n[0])
+                  .join("")}
+              </ThemedText>
+            </View>
+            <View style={styles.landlordInfo}>
+              <ThemedText style={styles.landlordName}>
+                {bill.landlord.name}
+              </ThemedText>
+              <ThemedText style={styles.landlordEmail}>
+                {bill.landlord.email}
+              </ThemedText>
+              <ThemedText style={styles.landlordPhone}>
+                {bill.landlord.phone}
+              </ThemedText>
+            </View>
+            <Ionicons
+              name="chevron-forward"
+              size={20}
+              color={colors.text}
+              style={{ opacity: 0.5 }}
+            />
+          </TouchableOpacity>
+        </ThemedView>
+
+        {/* Notes */}
+        {bill.notes && (
+          <ThemedView
+            style={[styles.section, { backgroundColor: colors.card }]}
+          >
+            <ThemedText style={styles.sectionTitle}>Notes</ThemedText>
+            <ThemedText style={styles.notes}>{bill.notes}</ThemedText>
+          </ThemedView>
+        )}
+      </ScrollView>
+
+      {/* Bottom Actions */}
+      {bill.status !== "paid" && (
+        <View
+          style={[styles.bottomActions, { backgroundColor: colors.background }]}
+        >
+          <TouchableOpacity
+            style={[
+              styles.actionButton,
+              styles.uploadButton,
+              { backgroundColor: colors.card },
+            ]}
+            onPress={handleUploadProof}
+          >
+            <Ionicons
+              name="cloud-upload-outline"
+              size={20}
+              color={colors.tint}
+            />
+            <ThemedText style={[styles.actionText, { color: colors.tint }]}>
+              Upload Proof
+            </ThemedText>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.actionButton,
+              styles.payButton,
+              { backgroundColor: colors.tint },
+            ]}
+            onPress={handlePayNow}
+          >
+            <Ionicons name="card-outline" size={20} color="white" />
+            <ThemedText style={[styles.actionText, { color: "white" }]}>
+              Pay Now
+            </ThemedText>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Upload Modal */}
+      <Modal
+        visible={showUploadModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowUploadModal(false)}
+      >
+        <SafeAreaView
+          style={[
+            styles.modalContainer,
+            { backgroundColor: colors.background },
+          ]}
+        >
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setShowUploadModal(false)}>
+              <Ionicons name="close" size={24} color={colors.text} />
+            </TouchableOpacity>
+            <ThemedText style={styles.modalTitle}>
+              Upload Payment Proof
+            </ThemedText>
+            <View style={{ width: 24 }} />
+          </View>
+
+          <ThemedView style={styles.modalContent}>
+            <View
+              style={[styles.billSummary, { backgroundColor: colors.card }]}
+            >
+              <ThemedText style={styles.modalBillId}>
+                {bill.invoiceId}
+              </ThemedText>
+              <ThemedText style={styles.modalBillAmount}>
+                ₱{bill.amount.toLocaleString()}
+              </ThemedText>
+              <ThemedText style={styles.modalBillMonth}>
+                {bill.month}
+              </ThemedText>
+            </View>
+
+            <View style={styles.uploadOptions}>
+              <TouchableOpacity
+                style={[styles.uploadOption, { backgroundColor: colors.card }]}
+                onPress={() => handleUploadDocument("Camera")}
+              >
+                <Ionicons name="camera-outline" size={32} color={colors.tint} />
+                <ThemedText style={styles.uploadOptionTitle}>
+                  Take Photo
+                </ThemedText>
+                <ThemedText style={styles.uploadOptionSubtitle}>
+                  Capture receipt with camera
+                </ThemedText>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.uploadOption, { backgroundColor: colors.card }]}
+                onPress={() => handleUploadDocument("Gallery")}
+              >
+                <Ionicons name="image-outline" size={32} color={colors.tint} />
+                <ThemedText style={styles.uploadOptionTitle}>
+                  Choose from Gallery
+                </ThemedText>
+                <ThemedText style={styles.uploadOptionSubtitle}>
+                  Select existing photo
+                </ThemedText>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.uploadOption, { backgroundColor: colors.card }]}
+                onPress={() => handleUploadDocument("Document")}
+              >
+                <Ionicons
+                  name="document-outline"
+                  size={32}
+                  color={colors.tint}
+                />
+                <ThemedText style={styles.uploadOptionTitle}>
+                  Upload Document
+                </ThemedText>
+                <ThemedText style={styles.uploadOptionSubtitle}>
+                  PDF or other file types
+                </ThemedText>
+              </TouchableOpacity>
+            </View>
+          </ThemedView>
+        </SafeAreaView>
+      </Modal>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E5E7",
+  },
+  backButton: {
+    padding: 4,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  shareButton: {
+    padding: 4,
+  },
+  content: {
+    flex: 1,
+    padding: 16,
+  },
+  billHeader: {
+    padding: 20,
+    borderRadius: 16,
+    marginBottom: 16,
+    alignItems: "center",
+  },
+  billTitleSection: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 8,
+  },
+  invoiceId: {
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  billMonth: {
+    fontSize: 16,
+    opacity: 0.8,
+    marginBottom: 8,
+  },
+  billAmount: {
+    fontSize: 32,
+    fontWeight: "bold",
+    marginBottom: 20,
+  },
+  dateSection: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    width: "100%",
+  },
+  dateItem: {
+    alignItems: "center",
+  },
+  dateLabel: {
+    fontSize: 12,
+    opacity: 0.6,
+    marginBottom: 4,
+  },
+  dateValue: {
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  section: {
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    marginBottom: 16,
+  },
+  propertyInfo: {
+    gap: 12,
+  },
+  propertyItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  propertyText: {
+    fontSize: 16,
+  },
+  breakdown: {
+    gap: 12,
+  },
+  breakdownItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 8,
+  },
+  breakdownLabel: {
+    fontSize: 16,
+  },
+  breakdownAmount: {
+    fontSize: 16,
+    fontWeight: "500",
+  },
+  totalItem: {
+    borderTopWidth: 1,
+    borderTopColor: "#E5E5E7",
+    paddingTop: 16,
+    marginTop: 8,
+  },
+  totalLabel: {
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  totalAmount: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#007AFF",
+  },
+  paymentMethods: {
+    gap: 16,
+  },
+  paymentMethod: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  paymentIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#007AFF20",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  paymentInfo: {
+    flex: 1,
+  },
+  paymentType: {
+    fontSize: 16,
+    fontWeight: "500",
+    marginBottom: 2,
+  },
+  paymentDetails: {
+    fontSize: 14,
+    opacity: 0.7,
+  },
+  landlordContact: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  landlordAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  landlordInitials: {
+    fontSize: 18,
+    fontWeight: "bold",
+  },
+  landlordInfo: {
+    flex: 1,
+  },
+  landlordName: {
+    fontSize: 16,
+    fontWeight: "600",
+    marginBottom: 2,
+  },
+  landlordEmail: {
+    fontSize: 14,
+    opacity: 0.7,
+    marginBottom: 2,
+  },
+  landlordPhone: {
+    fontSize: 14,
+    opacity: 0.7,
+  },
+  notes: {
+    fontSize: 14,
+    lineHeight: 20,
+    opacity: 0.8,
+  },
+  bottomActions: {
+    flexDirection: "row",
+    padding: 16,
+    gap: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#E5E5E7",
+  },
+  actionButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 16,
+    borderRadius: 12,
+    gap: 8,
+  },
+  uploadButton: {
+    borderWidth: 1,
+    borderColor: "#007AFF40",
+  },
+  payButton: {
+    // backgroundColor set dynamically
+  },
+  actionText: {
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  modalContainer: {
+    flex: 1,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E5E7",
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  modalContent: {
+    flex: 1,
+    padding: 16,
+  },
+  billSummary: {
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 24,
+    alignItems: "center",
+  },
+  modalBillId: {
+    fontSize: 16,
+    fontWeight: "600",
+    marginBottom: 4,
+  },
+  modalBillAmount: {
+    fontSize: 24,
+    fontWeight: "bold",
+    marginBottom: 4,
+  },
+  modalBillMonth: {
+    fontSize: 14,
+    opacity: 0.7,
+  },
+  uploadOptions: {
+    gap: 16,
+  },
+  uploadOption: {
+    padding: 24,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  uploadOptionTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  uploadOptionSubtitle: {
+    fontSize: 14,
+    opacity: 0.7,
+    textAlign: "center",
+  },
+});

@@ -71,7 +71,7 @@ export default function LandlordDashboard() {
               console.log(
                 "Tenant user detected, redirecting to tenant dashboard..."
               );
-              router.replace("/tenant/dashboard");
+              router.replace("/tenant/(tabs)/dashboard");
               return;
             }
 
