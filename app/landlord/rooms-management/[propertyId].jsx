@@ -1,11 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { useState } from "react";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { useCallback, useState } from "react";
 import {
   Alert,
   Dimensions,
   Image,
   Modal,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   TextInput,
@@ -18,6 +19,8 @@ import StatusChip from "@/components/landlord/StatusChip";
 import { ThemedText } from "@/components/ThemedText";
 import { Colors } from "@/constants/Colors";
 import { useColorScheme } from "@/hooks/useColorScheme";
+import { getUserProperties } from "@/utils/propertyHelpers";
+import { deleteRoom, getPropertyRooms } from "@/utils/roomHelpers";
 
 const { width, height } = Dimensions.get("window");
 
@@ -26,20 +29,49 @@ export default function RoomsManagementScreen() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [showRoomModal, setShowRoomModal] = useState(false);
+  const [rooms, setRooms] = useState([]);
+  const [property, setProperty] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   const router = useRouter();
   const { propertyId } = useLocalSearchParams();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
 
-  // Mock data - replace with Firebase data later
-  const property = {
-    id: propertyId,
-    name: "Sunset Apartments",
-    address: "123 Main St, Cebu City",
+  const loadData = async () => {
+    try {
+      setLoading(true);
+
+      // Load property details
+      const properties = await getUserProperties();
+      const currentProperty = properties.find((p) => p.id === propertyId);
+      setProperty(currentProperty);
+
+      // Load rooms
+      const propertyRooms = await getPropertyRooms(propertyId);
+      setRooms(propertyRooms);
+    } catch (error) {
+      console.error("Error loading data:", error);
+      Alert.alert("Error", "Failed to load rooms data");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const [rooms, setRooms] = useState([
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadData();
+    setRefreshing(false);
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [propertyId])
+  );
+
+  const [mockRooms] = useState([
     {
       id: "1",
       number: "101",
@@ -159,18 +191,42 @@ export default function RoomsManagementScreen() {
     router.push(`/landlord/room-form/${propertyId}`);
   };
 
-  const handleDeleteRoom = (roomId) => {
+  const handleDeleteRoom = async (room) => {
+    // Check if room is occupied before showing delete confirmation
+    if (room.status === "occupied") {
+      const tenantName = room.tenant?.name || "Unknown Tenant";
+      Alert.alert(
+        "Cannot Delete Room",
+        `Room ${room.number} cannot be deleted because it is currently occupied by ${tenantName}. Please move out the tenant before deleting the room.`,
+        [{ text: "OK" }]
+      );
+      return;
+    }
+
     Alert.alert(
       "Delete Room",
-      "Are you sure you want to delete this room? This action cannot be undone.",
+      `Are you sure you want to delete Room ${room.number}?\n\nThis action cannot be undone.`,
       [
         { text: "Cancel", style: "cancel" },
         {
           text: "Delete",
           style: "destructive",
-          onPress: () => {
-            setRooms(rooms.filter((r) => r.id !== roomId));
-            setShowRoomModal(false);
+          onPress: async () => {
+            try {
+              await deleteRoom(room.id, propertyId);
+              await loadData(); // Refresh data
+              setShowRoomModal(false);
+              Alert.alert("Success", "Room deleted successfully");
+            } catch (error) {
+              console.error("Error deleting room:", error);
+
+              // Show specific error message for better user experience
+              const errorMessage = error.message.includes("occupied")
+                ? error.message
+                : "Failed to delete room. Please try again.";
+
+              Alert.alert("Error", errorMessage);
+            }
           },
         },
       ]
@@ -333,7 +389,9 @@ export default function RoomsManagementScreen() {
                       {utility.charAt(0).toUpperCase() + utility.slice(1)}:
                     </ThemedText>
                     <ThemedText style={styles.detailValue}>
-                      {config.type === "flat"
+                      {config.type === "free"
+                        ? "Free"
+                        : config.type === "flat"
                         ? `₱${config.amount} (flat rate)`
                         : `₱${config.rate}/kWh (per usage)`}
                     </ThemedText>
@@ -383,7 +441,7 @@ export default function RoomsManagementScreen() {
 
               <TouchableOpacity
                 style={[styles.actionButton, { backgroundColor: "#FF3B30" }]}
-                onPress={() => handleDeleteRoom(selectedRoom.id)}
+                onPress={() => handleDeleteRoom(selectedRoom)}
               >
                 <Ionicons name="trash" size={20} color="white" />
                 <ThemedText style={styles.actionButtonText}>
@@ -412,7 +470,9 @@ export default function RoomsManagementScreen() {
 
         <View style={styles.headerTitleContainer}>
           <ThemedText style={styles.headerTitle}>Rooms</ThemedText>
-          <ThemedText style={styles.headerSubtitle}>{property.name}</ThemedText>
+          <ThemedText style={styles.headerSubtitle}>
+            {property?.name || "Loading..."}
+          </ThemedText>
         </View>
 
         <TouchableOpacity style={styles.addButton} onPress={handleCreateRoom}>
@@ -478,6 +538,9 @@ export default function RoomsManagementScreen() {
         style={styles.roomsList}
         contentContainerStyle={styles.roomsListContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
       >
         {filteredRooms.map((room) => (
           <RoomCard key={room.id} room={room} />

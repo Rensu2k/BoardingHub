@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { useState } from "react";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { useCallback, useState } from "react";
 import {
   Alert,
   Dimensions,
@@ -16,101 +16,83 @@ import StatusChip from "@/components/landlord/StatusChip";
 import { ThemedText } from "@/components/ThemedText";
 import { Colors } from "@/constants/Colors";
 import { useColorScheme } from "@/hooks/useColorScheme";
+import { getTenantById } from "@/utils/tenantHelpers";
 
 const { width, height } = Dimensions.get("window");
 
 export default function TenantProfileScreen() {
   const [activeTab, setActiveTab] = useState("overview");
+  const [tenant, setTenant] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   const router = useRouter();
   const { id } = useLocalSearchParams();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
 
-  // Mock tenant data - replace with Firebase data later
-  const tenant = {
-    id: id,
-    name: "Anna Garcia",
-    roomNumber: "101",
-    phone: "+63 912 345 6789",
-    email: "anna.garcia@email.com",
-    avatar: null,
-    status: "active",
-    balance: 0,
-    leaseStart: "2024-01-15",
-    leaseEnd: "2024-12-15",
-    deposit: 5600,
-    emergencyContact: {
-      name: "Carlos Garcia",
-      relationship: "Father",
-      phone: "+63 917 111 2222",
-    },
-    notes:
-      "Excellent tenant, always pays on time. Works as a nurse at the local hospital.",
-    documents: [
-      {
-        id: "1",
-        type: "ID Photo",
-        url: "https://images.unsplash.com/photo-1494790108755-2616b612b786?w=200",
-        uploadDate: "2024-01-10",
-      },
-      {
-        id: "2",
-        type: "Contract",
-        url: null,
-        filename: "lease_contract_anna_garcia.pdf",
-        uploadDate: "2024-01-12",
-      },
-      {
-        id: "3",
-        type: "Payment Proof",
-        url: "https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=300",
-        uploadDate: "2024-03-01",
-      },
-    ],
-    payments: [
-      {
-        id: "1",
-        date: "2024-03-01",
-        amount: 2800,
-        type: "Rent",
-        status: "paid",
-        method: "Bank Transfer",
-      },
-      {
-        id: "2",
-        date: "2024-02-01",
-        amount: 2800,
-        type: "Rent",
-        status: "paid",
-        method: "Cash",
-      },
-      {
-        id: "3",
-        date: "2024-01-15",
-        amount: 5600,
-        type: "Deposit",
-        status: "paid",
-        method: "Bank Transfer",
-      },
-    ],
-    maintenanceRequests: [
-      {
-        id: "1",
-        date: "2024-02-15",
-        issue: "Leaky faucet in bathroom",
-        status: "completed",
-        priority: "medium",
-      },
-      {
-        id: "2",
-        date: "2024-01-20",
-        issue: "AC unit making noise",
-        status: "completed",
-        priority: "low",
-      },
-    ],
+  // Load tenant data from Firebase
+  const loadTenantData = async () => {
+    try {
+      setLoading(true);
+      const tenantData = await getTenantById(id);
+      setTenant({
+        ...tenantData,
+        // Add mock data for features not yet implemented
+        deposit: tenantData.deposit || 5600,
+        notes: tenantData.notes || "No additional notes available.",
+        documents: tenantData.documents || [],
+        payments: tenantData.payments || [],
+        maintenanceRequests: tenantData.maintenanceRequests || [],
+      });
+    } catch (error) {
+      console.error("Error loading tenant data:", error);
+      Alert.alert("Error", "Failed to load tenant details. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
+
+  // Load tenant data when screen focuses
+  useFocusEffect(
+    useCallback(() => {
+      if (id) {
+        loadTenantData();
+      }
+    }, [id])
+  );
+
+  // Show loading screen
+  if (loading) {
+    return (
+      <SafeAreaView
+        style={[styles.container, { backgroundColor: colors.background }]}
+      >
+        <View style={styles.loadingContainer}>
+          <ThemedText style={styles.loadingText}>Loading tenant details...</ThemedText>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Show error if tenant not found
+  if (!tenant) {
+    return (
+      <SafeAreaView
+        style={[styles.container, { backgroundColor: colors.background }]}
+      >
+        <View style={styles.errorContainer}>
+          <Ionicons name="person-outline" size={48} color={colors.text + "40"} />
+          <ThemedText style={styles.errorText}>Tenant not found</ThemedText>
+          <TouchableOpacity
+            style={[styles.retryButton, { backgroundColor: colors.tint }]}
+            onPress={() => router.back()}
+          >
+            <ThemedText style={styles.retryButtonText}>Go Back</ThemedText>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   const tabs = [
     { key: "overview", label: "Overview", icon: "person-outline" },
@@ -174,7 +156,7 @@ export default function TenantProfileScreen() {
           <View style={styles.infoContent}>
             <ThemedText style={styles.infoLabel}>Name</ThemedText>
             <ThemedText style={styles.infoValue}>
-              {tenant.emergencyContact.name}
+              {tenant.emergencyContact?.name || "Not provided"}
             </ThemedText>
           </View>
         </View>
@@ -186,7 +168,7 @@ export default function TenantProfileScreen() {
           <View style={styles.infoContent}>
             <ThemedText style={styles.infoLabel}>Relationship</ThemedText>
             <ThemedText style={styles.infoValue}>
-              {tenant.emergencyContact.relationship}
+              {tenant.emergencyContact?.relationship || "Not provided"}
             </ThemedText>
           </View>
         </View>
@@ -198,7 +180,7 @@ export default function TenantProfileScreen() {
           <View style={styles.infoContent}>
             <ThemedText style={styles.infoLabel}>Phone</ThemedText>
             <ThemedText style={styles.infoValue}>
-              {tenant.emergencyContact.phone}
+              {tenant.emergencyContact?.phone || "Not provided"}
             </ThemedText>
           </View>
         </View>
@@ -215,7 +197,7 @@ export default function TenantProfileScreen() {
           <View style={styles.infoContent}>
             <ThemedText style={styles.infoLabel}>Lease Start</ThemedText>
             <ThemedText style={styles.infoValue}>
-              {new Date(tenant.leaseStart).toLocaleDateString()}
+              {tenant.leaseStart ? new Date(tenant.leaseStart).toLocaleDateString() : "Not set"}
             </ThemedText>
           </View>
         </View>
@@ -227,7 +209,7 @@ export default function TenantProfileScreen() {
           <View style={styles.infoContent}>
             <ThemedText style={styles.infoLabel}>Lease End</ThemedText>
             <ThemedText style={styles.infoValue}>
-              {new Date(tenant.leaseEnd).toLocaleDateString()}
+              {tenant.leaseEnd ? new Date(tenant.leaseEnd).toLocaleDateString() : "Not set"}
             </ThemedText>
           </View>
         </View>
@@ -239,7 +221,7 @@ export default function TenantProfileScreen() {
           <View style={styles.infoContent}>
             <ThemedText style={styles.infoLabel}>Security Deposit</ThemedText>
             <ThemedText style={styles.infoValue}>
-              ₱{tenant.deposit.toLocaleString()}
+              ₱{(tenant.deposit || 0).toLocaleString()}
             </ThemedText>
           </View>
         </View>
@@ -321,32 +303,41 @@ export default function TenantProfileScreen() {
           </TouchableOpacity>
         </View>
 
-        {tenant.payments.map((payment) => (
-          <View
-            key={payment.id}
-            style={[styles.paymentCard, { backgroundColor: colors.card }]}
-          >
-            <View style={styles.paymentHeader}>
-              <View>
-                <ThemedText style={styles.paymentType}>
-                  {payment.type}
-                </ThemedText>
-                <ThemedText style={styles.paymentDate}>
-                  {new Date(payment.date).toLocaleDateString()}
-                </ThemedText>
+        {tenant.payments && tenant.payments.length > 0 ? (
+          tenant.payments.map((payment) => (
+            <View
+              key={payment.id}
+              style={[styles.paymentCard, { backgroundColor: colors.card }]}
+            >
+              <View style={styles.paymentHeader}>
+                <View>
+                  <ThemedText style={styles.paymentType}>
+                    {payment.type}
+                  </ThemedText>
+                  <ThemedText style={styles.paymentDate}>
+                    {new Date(payment.date).toLocaleDateString()}
+                  </ThemedText>
+                </View>
+                <View style={styles.paymentRight}>
+                  <ThemedText style={styles.paymentAmount}>
+                    ₱{payment.amount.toLocaleString()}
+                  </ThemedText>
+                  <StatusChip status={payment.status} size="small" />
+                </View>
               </View>
-              <View style={styles.paymentRight}>
-                <ThemedText style={styles.paymentAmount}>
-                  ₱{payment.amount.toLocaleString()}
-                </ThemedText>
-                <StatusChip status={payment.status} size="small" />
-              </View>
+              <ThemedText style={styles.paymentMethod}>
+                Via {payment.method}
+              </ThemedText>
             </View>
-            <ThemedText style={styles.paymentMethod}>
-              Via {payment.method}
+          ))
+        ) : (
+          <View style={styles.emptyState}>
+            <Ionicons name="card-outline" size={48} color={colors.text + "40"} />
+            <ThemedText style={styles.emptyStateText}>
+              No payment history available
             </ThemedText>
           </View>
-        ))}
+        )}
       </View>
     </ScrollView>
   );
@@ -366,56 +357,65 @@ export default function TenantProfileScreen() {
           </TouchableOpacity>
         </View>
 
-        {tenant.documents.map((document) => (
-          <TouchableOpacity
-            key={document.id}
-            style={[styles.documentCard, { backgroundColor: colors.card }]}
-            onPress={() =>
-              Alert.alert("View Document", `Open ${document.type}?`)
-            }
-          >
-            <View style={styles.documentIcon}>
-              {document.type === "ID Photo" && document.url ? (
-                <Image
-                  source={{ uri: document.url }}
-                  style={styles.documentThumbnail}
-                />
-              ) : (
-                <Ionicons
-                  name={
-                    document.type === "Contract"
-                      ? "document-outline"
-                      : "image-outline"
-                  }
-                  size={24}
-                  color={colors.tint}
-                />
-              )}
-            </View>
+        {tenant.documents && tenant.documents.length > 0 ? (
+          tenant.documents.map((document) => (
+            <TouchableOpacity
+              key={document.id}
+              style={[styles.documentCard, { backgroundColor: colors.card }]}
+              onPress={() =>
+                Alert.alert("View Document", `Open ${document.type}?`)
+              }
+            >
+              <View style={styles.documentIcon}>
+                {document.type === "ID Photo" && document.url ? (
+                  <Image
+                    source={{ uri: document.url }}
+                    style={styles.documentThumbnail}
+                  />
+                ) : (
+                  <Ionicons
+                    name={
+                      document.type === "Contract"
+                        ? "document-outline"
+                        : "image-outline"
+                    }
+                    size={24}
+                    color={colors.tint}
+                  />
+                )}
+              </View>
 
-            <View style={styles.documentInfo}>
-              <ThemedText style={styles.documentType}>
-                {document.type}
-              </ThemedText>
-              <ThemedText style={styles.documentDate}>
-                Uploaded: {new Date(document.uploadDate).toLocaleDateString()}
-              </ThemedText>
-              {document.filename && (
-                <ThemedText style={styles.documentFilename}>
-                  {document.filename}
+              <View style={styles.documentInfo}>
+                <ThemedText style={styles.documentType}>
+                  {document.type}
                 </ThemedText>
-              )}
-            </View>
+                <ThemedText style={styles.documentDate}>
+                  Uploaded: {new Date(document.uploadDate).toLocaleDateString()}
+                </ThemedText>
+                {document.filename && (
+                  <ThemedText style={styles.documentFilename}>
+                    {document.filename}
+                  </ThemedText>
+                )}
+              </View>
 
-            <TouchableOpacity style={styles.documentAction}>
-              <Ionicons
-                name="chevron-forward"
-                size={20}
-                color={colors.text + "60"}
-              />
+              <TouchableOpacity style={styles.documentAction}>
+                <Ionicons
+                  name="chevron-forward"
+                  size={20}
+                  color={colors.text + "60"}
+                />
+              </TouchableOpacity>
             </TouchableOpacity>
-          </TouchableOpacity>
-        ))}
+          ))
+        ) : (
+          <View style={styles.emptyState}>
+            <Ionicons name="document-outline" size={48} color={colors.text + "40"} />
+            <ThemedText style={styles.emptyStateText}>
+              No documents uploaded yet
+            </ThemedText>
+          </View>
+        )}
       </View>
     </ScrollView>
   );
@@ -440,45 +440,54 @@ export default function TenantProfileScreen() {
           </TouchableOpacity>
         </View>
 
-        {tenant.maintenanceRequests.map((request) => (
-          <View
-            key={request.id}
-            style={[styles.maintenanceCard, { backgroundColor: colors.card }]}
-          >
-            <View style={styles.maintenanceHeader}>
-              <ThemedText style={styles.maintenanceIssue}>
-                {request.issue}
-              </ThemedText>
-              <StatusChip status={request.status} size="small" />
-            </View>
-
-            <View style={styles.maintenanceDetails}>
-              <View style={styles.maintenanceRow}>
-                <Ionicons
-                  name="calendar-outline"
-                  size={16}
-                  color={colors.text + "60"}
-                />
-                <ThemedText style={styles.maintenanceText}>
-                  {new Date(request.date).toLocaleDateString()}
+        {tenant.maintenanceRequests && tenant.maintenanceRequests.length > 0 ? (
+          tenant.maintenanceRequests.map((request) => (
+            <View
+              key={request.id}
+              style={[styles.maintenanceCard, { backgroundColor: colors.card }]}
+            >
+              <View style={styles.maintenanceHeader}>
+                <ThemedText style={styles.maintenanceIssue}>
+                  {request.issue}
                 </ThemedText>
+                <StatusChip status={request.status} size="small" />
               </View>
 
-              <View style={styles.maintenanceRow}>
-                <Ionicons
-                  name="flag-outline"
-                  size={16}
-                  color={colors.text + "60"}
-                />
-                <ThemedText style={styles.maintenanceText}>
-                  {request.priority.charAt(0).toUpperCase() +
-                    request.priority.slice(1)}{" "}
-                  Priority
-                </ThemedText>
+              <View style={styles.maintenanceDetails}>
+                <View style={styles.maintenanceRow}>
+                  <Ionicons
+                    name="calendar-outline"
+                    size={16}
+                    color={colors.text + "60"}
+                  />
+                  <ThemedText style={styles.maintenanceText}>
+                    {new Date(request.date).toLocaleDateString()}
+                  </ThemedText>
+                </View>
+
+                <View style={styles.maintenanceRow}>
+                  <Ionicons
+                    name="flag-outline"
+                    size={16}
+                    color={colors.text + "60"}
+                  />
+                  <ThemedText style={styles.maintenanceText}>
+                    {request.priority.charAt(0).toUpperCase() +
+                      request.priority.slice(1)}{" "}
+                    Priority
+                  </ThemedText>
+                </View>
               </View>
             </View>
+          ))
+        ) : (
+          <View style={styles.emptyState}>
+            <Ionicons name="construct-outline" size={48} color={colors.text + "40"} />
+            <ThemedText style={styles.emptyStateText}>
+              No maintenance requests yet
+            </ThemedText>
           </View>
-        ))}
+        )}
       </View>
     </ScrollView>
   );
@@ -520,7 +529,7 @@ export default function TenantProfileScreen() {
           <View style={styles.headerInfo}>
             <ThemedText style={styles.tenantName}>{tenant.name}</ThemedText>
             <ThemedText style={styles.roomInfo}>
-              Room {tenant.roomNumber}
+              {tenant.roomNumber ? `Room ${tenant.roomNumber}` : "No room assigned"}
             </ThemedText>
           </View>
           <StatusChip status={tenant.status} />
@@ -800,5 +809,50 @@ const styles = StyleSheet.create({
   maintenanceText: {
     fontSize: 14,
     opacity: 0.7,
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+  },
+  loadingText: {
+    fontSize: 16,
+    opacity: 0.7,
+    marginTop: 16,
+  },
+  errorContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+  },
+  errorText: {
+    fontSize: 16,
+    opacity: 0.7,
+    marginTop: 16,
+    textAlign: "center",
+  },
+  retryButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginTop: 16,
+  },
+  retryButtonText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  emptyState: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 40,
+  },
+  emptyStateText: {
+    fontSize: 16,
+    opacity: 0.6,
+    marginTop: 12,
+    textAlign: "center",
   },
 });

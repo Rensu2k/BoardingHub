@@ -8,3 +8,4 @@ export {
   TenantRowSkeleton,
 } from "./SkeletonLoader";
 export { default as StatusChip } from "./StatusChip";
+export { default as TenantApplicationModal } from "./TenantApplicationModal";

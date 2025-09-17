@@ -91,13 +91,13 @@ export default function More() {
           id: 1,
           title: "Personal Information",
           icon: "person-outline",
-          action: () => Alert.alert("Profile", "Edit profile coming soon!"),
+          action: () => router.push("/tenant/profile/edit"),
         },
         {
           id: 2,
           title: "Payment Methods",
           icon: "card-outline",
-          action: () => Alert.alert("Payment", "Payment methods coming soon!"),
+          action: () => router.push("/tenant/profile/payment-methods"),
         },
         {
           id: 3,
@@ -113,31 +113,37 @@ export default function More() {
           action: () =>
             Alert.alert("Contacts", "Emergency contacts coming soon!"),
         },
+        {
+          id: 5,
+          title: "Change Password",
+          icon: "lock-closed-outline",
+          action: () => router.push("/tenant/profile/change-password"),
+        },
       ],
     },
     {
       title: "Property",
       items: [
         {
-          id: 5,
+          id: 6,
           title: "Lease Agreement",
           icon: "document-text-outline",
           action: () => Alert.alert("Lease", "Lease agreement coming soon!"),
         },
         {
-          id: 6,
+          id: 7,
           title: "House Rules",
           icon: "list-outline",
           action: () => Alert.alert("Rules", "House rules coming soon!"),
         },
         {
-          id: 7,
+          id: 8,
           title: "Property Info",
           icon: "home-outline",
           action: () => Alert.alert("Property", "Property info coming soon!"),
         },
         {
-          id: 8,
+          id: 9,
           title: "Amenities",
           icon: "star-outline",
           action: () => Alert.alert("Amenities", "Amenities list coming soon!"),
@@ -145,28 +151,63 @@ export default function More() {
       ],
     },
     {
+      title: "Settings",
+      items: [
+        {
+          id: 15,
+          title: "Notifications",
+          icon: "notifications-outline",
+          action: () => router.push("/tenant/profile/notification-settings"),
+        },
+        {
+          id: 16,
+          title: "Privacy & Security",
+          icon: "shield-outline",
+          action: () => router.push("/tenant/profile/privacy-settings"),
+        },
+        {
+          id: 17,
+          title: "Offline & Data",
+          icon: "cloud-offline-outline",
+          action: () => router.push("/tenant/profile/offline-settings"),
+        },
+        {
+          id: 18,
+          title: "Language & Region",
+          icon: "language-outline",
+          action: () => router.push("/tenant/profile/language-settings"),
+        },
+      ],
+    },
+    {
       title: "Support",
       items: [
         {
-          id: 9,
+          id: 19,
           title: "Contact Landlord",
           icon: "chatbubble-outline",
           action: () => Alert.alert("Contact", "Contact landlord coming soon!"),
         },
         {
-          id: 10,
+          id: 20,
           title: "Help & FAQ",
           icon: "help-circle-outline",
           action: () => Alert.alert("Help", "Help & FAQ coming soon!"),
         },
         {
-          id: 11,
+          id: 21,
+          title: "Maintenance Request",
+          icon: "construct-outline",
+          action: () => router.push("/tenant/maintenance"),
+        },
+        {
+          id: 22,
           title: "Report Issue",
           icon: "flag-outline",
           action: () => Alert.alert("Report", "Report issue coming soon!"),
         },
         {
-          id: 12,
+          id: 23,
           title: "Feedback",
           icon: "thumbs-up-outline",
           action: () => Alert.alert("Feedback", "Feedback form coming soon!"),
@@ -272,9 +313,7 @@ export default function More() {
             </View>
             <TouchableOpacity
               style={styles.editProfileButton}
-              onPress={() =>
-                Alert.alert("Edit Profile", "Edit profile coming soon!")
-              }
+              onPress={() => router.push("/tenant/profile/edit")}
             >
               <Ionicons name="create-outline" size={20} color={colors.text} />
             </TouchableOpacity>

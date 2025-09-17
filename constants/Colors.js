@@ -17,6 +17,7 @@ export const Colors = {
     border: "#E5E7EB",
     card: "#F9FAFB",
     inputBackground: "rgba(0,0,0,0.05)",
+    warning: "#FF9500",
   },
   dark: {
     text: "#ECEDEE",
@@ -28,5 +29,6 @@ export const Colors = {
     border: "#374151",
     card: "#1F2937",
     inputBackground: "rgba(255,255,255,0.1)",
+    warning: "#FF9500",
   },
 };

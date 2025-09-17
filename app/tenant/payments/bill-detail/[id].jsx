@@ -4,7 +4,6 @@ import { useState } from "react";
 import {
   Alert,
   Dimensions,
-  Modal,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
@@ -14,7 +13,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
-import { StatusChip } from "@/components/tenant";
+import { StatusChip, UploadProofModal } from "@/components/tenant";
 import { Colors } from "@/constants/Colors";
 import { useColorScheme } from "@/hooks/useColorScheme";
 
@@ -24,6 +23,8 @@ export default function BillDetail() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState(null); // null, 'pending_review', 'approved', 'rejected'
+  const [uploadedProof, setUploadedProof] = useState(null);
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
 
@@ -63,6 +64,35 @@ export default function BillDetail() {
     setShowUploadModal(true);
   };
 
+  const handleUploadComplete = (uploadData) => {
+    setUploadedProof(uploadData);
+    setUploadStatus("pending_review");
+    // In a real app, you would update the bill status on the server
+  };
+
+  const handleEditProof = () => {
+    setShowUploadModal(true);
+  };
+
+  const handleReplaceProof = () => {
+    Alert.alert(
+      "Replace Payment Proof",
+      "Are you sure you want to replace the current payment proof?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Replace",
+          style: "destructive",
+          onPress: () => {
+            setUploadedProof(null);
+            setUploadStatus(null);
+            setShowUploadModal(true);
+          },
+        },
+      ]
+    );
+  };
+
   const handlePayNow = () => {
     Alert.alert("Pay Now", "Payment system coming soon!");
   };
@@ -79,11 +109,6 @@ export default function BillDetail() {
         onPress: () => Alert.alert("Email", `Emailing ${bill.landlord.email}`),
       },
     ]);
-  };
-
-  const handleUploadDocument = (method) => {
-    Alert.alert("Upload", `${method} upload coming soon!`);
-    setShowUploadModal(false);
   };
 
   return (
@@ -182,6 +207,67 @@ export default function BillDetail() {
           </View>
         </ThemedView>
 
+        {/* Payment Proof Status */}
+        {uploadedProof && (
+          <ThemedView style={[styles.section, { backgroundColor: colors.card }]}>
+            <ThemedText style={styles.sectionTitle}>Payment Proof Status</ThemedText>
+            <View style={styles.proofStatus}>
+              <View style={styles.statusHeader}>
+                <View style={styles.statusIndicator}>
+                  <Ionicons
+                    name={uploadStatus === "pending_review" ? "time-outline" : "checkmark-circle-outline"}
+                    size={20}
+                    color={uploadStatus === "pending_review" ? "#FF9500" : "#34C759"}
+                  />
+                  <ThemedText
+                    style={[
+                      styles.statusText,
+                      {
+                        color: uploadStatus === "pending_review" ? "#FF9500" : "#34C759"
+                      }
+                    ]}
+                  >
+                    {uploadStatus === "pending_review" ? "Pending Review" : "Approved"}
+                  </ThemedText>
+                </View>
+                <ThemedText style={styles.submittedDate}>
+                  Submitted: {new Date(uploadedProof.submittedAt).toLocaleDateString()}
+                </ThemedText>
+              </View>
+
+              {uploadedProof.note && (
+                <View style={styles.proofNote}>
+                  <ThemedText style={styles.noteLabel}>Note:</ThemedText>
+                  <ThemedText style={styles.noteText}>{uploadedProof.note}</ThemedText>
+                </View>
+              )}
+
+              {uploadStatus === "pending_review" && (
+                <View style={styles.pendingActions}>
+                  <TouchableOpacity
+                    style={[styles.pendingAction, { borderColor: colors.tint }]}
+                    onPress={handleEditProof}
+                  >
+                    <Ionicons name="pencil-outline" size={16} color={colors.tint} />
+                    <ThemedText style={[styles.pendingActionText, { color: colors.tint }]}>
+                      Edit
+                    </ThemedText>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.pendingAction, { borderColor: "#FF3B30" }]}
+                    onPress={handleReplaceProof}
+                  >
+                    <Ionicons name="refresh-outline" size={16} color="#FF3B30" />
+                    <ThemedText style={[styles.pendingActionText, { color: "#FF3B30" }]}>
+                      Replace
+                    </ThemedText>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+          </ThemedView>
+        )}
+
         {/* Payment Methods */}
         <ThemedView style={[styles.section, { backgroundColor: colors.card }]}>
           <ThemedText style={styles.sectionTitle}>Payment Methods</ThemedText>
@@ -272,125 +358,92 @@ export default function BillDetail() {
         <View
           style={[styles.bottomActions, { backgroundColor: colors.background }]}
         >
-          <TouchableOpacity
-            style={[
-              styles.actionButton,
-              styles.uploadButton,
-              { backgroundColor: colors.card },
-            ]}
-            onPress={handleUploadProof}
-          >
-            <Ionicons
-              name="cloud-upload-outline"
-              size={20}
-              color={colors.tint}
-            />
-            <ThemedText style={[styles.actionText, { color: colors.tint }]}>
-              Upload Proof
-            </ThemedText>
-          </TouchableOpacity>
+          {!uploadedProof ? (
+            <>
+              <TouchableOpacity
+                style={[
+                  styles.actionButton,
+                  styles.uploadButton,
+                  { backgroundColor: colors.card },
+                ]}
+                onPress={handleUploadProof}
+              >
+                <Ionicons
+                  name="cloud-upload-outline"
+                  size={20}
+                  color={colors.tint}
+                />
+                <ThemedText style={[styles.actionText, { color: colors.tint }]}>
+                  Upload Proof
+                </ThemedText>
+              </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[
-              styles.actionButton,
-              styles.payButton,
-              { backgroundColor: colors.tint },
-            ]}
-            onPress={handlePayNow}
-          >
-            <Ionicons name="card-outline" size={20} color="white" />
-            <ThemedText style={[styles.actionText, { color: "white" }]}>
-              Pay Now
-            </ThemedText>
-          </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.actionButton,
+                  styles.payButton,
+                  { backgroundColor: colors.tint },
+                ]}
+                onPress={handlePayNow}
+              >
+                <Ionicons name="card-outline" size={20} color="white" />
+                <ThemedText style={[styles.actionText, { color: "white" }]}>
+                  Pay Now
+                </ThemedText>
+              </TouchableOpacity>
+            </>
+          ) : uploadStatus === "pending_review" ? (
+            <View style={styles.pendingReviewContainer}>
+              <View style={styles.pendingReviewInfo}>
+                <Ionicons name="time-outline" size={24} color="#FF9500" />
+                <View>
+                  <ThemedText style={styles.pendingReviewTitle}>
+                    Proof Submitted
+                  </ThemedText>
+                  <ThemedText style={styles.pendingReviewSubtitle}>
+                    Awaiting landlord review
+                  </ThemedText>
+                </View>
+              </View>
+              <TouchableOpacity
+                style={[
+                  styles.actionButton,
+                  styles.payButton,
+                  { backgroundColor: colors.tint, flex: 1 },
+                ]}
+                onPress={handlePayNow}
+              >
+                <Ionicons name="card-outline" size={20} color="white" />
+                <ThemedText style={[styles.actionText, { color: "white" }]}>
+                  Pay Now
+                </ThemedText>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={[
+                styles.actionButton,
+                styles.payButton,
+                { backgroundColor: colors.tint, width: "100%" },
+              ]}
+              onPress={handlePayNow}
+            >
+              <Ionicons name="card-outline" size={20} color="white" />
+              <ThemedText style={[styles.actionText, { color: "white" }]}>
+                Pay Now
+              </ThemedText>
+            </TouchableOpacity>
+          )}
         </View>
       )}
 
       {/* Upload Modal */}
-      <Modal
+      <UploadProofModal
         visible={showUploadModal}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setShowUploadModal(false)}
-      >
-        <SafeAreaView
-          style={[
-            styles.modalContainer,
-            { backgroundColor: colors.background },
-          ]}
-        >
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setShowUploadModal(false)}>
-              <Ionicons name="close" size={24} color={colors.text} />
-            </TouchableOpacity>
-            <ThemedText style={styles.modalTitle}>
-              Upload Payment Proof
-            </ThemedText>
-            <View style={{ width: 24 }} />
-          </View>
-
-          <ThemedView style={styles.modalContent}>
-            <View
-              style={[styles.billSummary, { backgroundColor: colors.card }]}
-            >
-              <ThemedText style={styles.modalBillId}>
-                {bill.invoiceId}
-              </ThemedText>
-              <ThemedText style={styles.modalBillAmount}>
-                ₱{bill.amount.toLocaleString()}
-              </ThemedText>
-              <ThemedText style={styles.modalBillMonth}>
-                {bill.month}
-              </ThemedText>
-            </View>
-
-            <View style={styles.uploadOptions}>
-              <TouchableOpacity
-                style={[styles.uploadOption, { backgroundColor: colors.card }]}
-                onPress={() => handleUploadDocument("Camera")}
-              >
-                <Ionicons name="camera-outline" size={32} color={colors.tint} />
-                <ThemedText style={styles.uploadOptionTitle}>
-                  Take Photo
-                </ThemedText>
-                <ThemedText style={styles.uploadOptionSubtitle}>
-                  Capture receipt with camera
-                </ThemedText>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.uploadOption, { backgroundColor: colors.card }]}
-                onPress={() => handleUploadDocument("Gallery")}
-              >
-                <Ionicons name="image-outline" size={32} color={colors.tint} />
-                <ThemedText style={styles.uploadOptionTitle}>
-                  Choose from Gallery
-                </ThemedText>
-                <ThemedText style={styles.uploadOptionSubtitle}>
-                  Select existing photo
-                </ThemedText>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.uploadOption, { backgroundColor: colors.card }]}
-                onPress={() => handleUploadDocument("Document")}
-              >
-                <Ionicons
-                  name="document-outline"
-                  size={32}
-                  color={colors.tint}
-                />
-                <ThemedText style={styles.uploadOptionTitle}>
-                  Upload Document
-                </ThemedText>
-                <ThemedText style={styles.uploadOptionSubtitle}>
-                  PDF or other file types
-                </ThemedText>
-              </TouchableOpacity>
-            </View>
-          </ThemedView>
-        </SafeAreaView>
-      </Modal>
+        onClose={() => setShowUploadModal(false)}
+        bill={bill}
+        onUploadComplete={handleUploadComplete}
+      />
     </SafeAreaView>
   );
 }
@@ -582,6 +635,80 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     opacity: 0.8,
   },
+  proofStatus: {
+    gap: 16,
+  },
+  statusHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  statusIndicator: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  statusText: {
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  submittedDate: {
+    fontSize: 12,
+    opacity: 0.6,
+  },
+  proofNote: {
+    padding: 12,
+    backgroundColor: "#f8f9fa",
+    borderRadius: 8,
+  },
+  noteLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    marginBottom: 4,
+  },
+  noteText: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  pendingActions: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  pendingAction: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 8,
+  },
+  pendingActionText: {
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  pendingReviewContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 16,
+    flex: 1,
+  },
+  pendingReviewInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    flex: 1,
+  },
+  pendingReviewTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#FF9500",
+  },
+  pendingReviewSubtitle: {
+    fontSize: 12,
+    opacity: 0.7,
+  },
   bottomActions: {
     flexDirection: "row",
     padding: 16,
@@ -608,63 +735,5 @@ const styles = StyleSheet.create({
   actionText: {
     fontSize: 16,
     fontWeight: "600",
-  },
-  modalContainer: {
-    flex: 1,
-  },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E5E7",
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-  },
-  modalContent: {
-    flex: 1,
-    padding: 16,
-  },
-  billSummary: {
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 24,
-    alignItems: "center",
-  },
-  modalBillId: {
-    fontSize: 16,
-    fontWeight: "600",
-    marginBottom: 4,
-  },
-  modalBillAmount: {
-    fontSize: 24,
-    fontWeight: "bold",
-    marginBottom: 4,
-  },
-  modalBillMonth: {
-    fontSize: 14,
-    opacity: 0.7,
-  },
-  uploadOptions: {
-    gap: 16,
-  },
-  uploadOption: {
-    padding: 24,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  uploadOptionTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    marginTop: 12,
-    marginBottom: 4,
-  },
-  uploadOptionSubtitle: {
-    fontSize: 14,
-    opacity: 0.7,
-    textAlign: "center",
   },
 });

@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Alert,
   Dimensions,
@@ -15,8 +15,15 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
+import { MessageModal } from "@/components/tenant";
 import { Colors } from "@/constants/Colors";
 import { useColorScheme } from "@/hooks/useColorScheme";
+import {
+  getCurrentTenantProfile,
+  makePhoneCall,
+  notifyLandlordOfApplication,
+} from "@/utils/communicationHelpers";
+import { getRoomDetailsForTenant } from "@/utils/roomHelpers";
 
 const { width } = Dimensions.get("window");
 
@@ -26,98 +33,121 @@ export default function ListingDetail() {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [showGallery, setShowGallery] = useState(false);
   const [isFavorite, setIsFavorite] = useState(false);
+  const [listing, setListing] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [showMessageModal, setShowMessageModal] = useState(false);
+  const [messageType, setMessageType] = useState("inquire");
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
 
-  // Mock listing data - in real app, fetch by ID
-  const listing = {
-    id: parseInt(id),
-    title: "Cozy Single Room - Downtown",
-    price: 4500,
-    location: "Makati City",
-    description:
-      "Perfect for students and young professionals. Walking distance to MRT and major shopping centers. The room is fully furnished with modern amenities and offers a comfortable living space in the heart of the business district.",
-    images: [
-      "https://via.placeholder.com/400x300/4A90E2/FFFFFF?text=Room+View+1",
-      "https://via.placeholder.com/400x300/7ED321/FFFFFF?text=Room+View+2",
-      "https://via.placeholder.com/400x300/F5A623/FFFFFF?text=Room+View+3",
-      "https://via.placeholder.com/400x300/BD10E0/FFFFFF?text=Room+View+4",
-    ],
-    roomNumber: "A-101",
-    size: "12 sqm",
-    type: "Single Room",
-    floor: "2nd Floor",
-    available: true,
-    availableFrom: "January 15, 2025",
-    landlord: {
-      name: "Ms. Maria Santos",
-      phone: "+63 912 345 6789",
-      email: "maria.santos@email.com",
-      verified: true,
-      rating: 4.8,
-      totalRatings: 23,
-      responseTime: "Usually responds within 2 hours",
-    },
-    amenities: [
-      { name: "WiFi Internet", icon: "wifi", included: true },
-      { name: "Air Conditioning", icon: "snow", included: true },
-      { name: "Private Bathroom", icon: "water", included: true },
-      { name: "Study Desk", icon: "desktop", included: true },
-      { name: "Closet", icon: "shirt", included: true },
-      { name: "Window View", icon: "sunny", included: true },
-      { name: "Parking", icon: "car", included: false },
-      { name: "Laundry Service", icon: "shirt", included: false },
-    ],
-    rules: [
-      "No smoking inside the room",
-      "No pets allowed",
-      "Quiet hours: 10PM - 6AM",
-      "No overnight guests without prior notice",
-      "Keep common areas clean",
-      "Utilities to be paid separately",
-    ],
-    pricing: {
-      monthlyRent: 4500,
-      securityDeposit: 9000,
-      advancePayment: 4500,
-      utilities: "Separate (Approx. ₱800-1200/month)",
-      totalMoveIn: 18000,
-    },
-    nearbyPlaces: [
-      { name: "MRT Station", distance: "5 min walk", icon: "train" },
-      { name: "SM Makati", distance: "10 min walk", icon: "storefront" },
-      { name: "Ayala Center", distance: "15 min walk", icon: "business" },
-      { name: "McDonald's", distance: "2 min walk", icon: "restaurant" },
-    ],
-  };
-
-  const contactLandlord = (action = "inquire") => {
-    const templates = {
-      inquire: `Hi ${listing.landlord.name}, I'm interested in the ${
-        listing.title
-      } (${
-        listing.roomNumber
-      }) listed at ₱${listing.price.toLocaleString()}/month. Could you please provide more details about availability and viewing schedule? Thank you!`,
-      apply: `Hi ${listing.landlord.name}, I would like to apply for the ${listing.title} (${listing.roomNumber}). I'm a responsible tenant and can provide all necessary documents. Please let me know the next steps. Thank you!`,
-      schedule: `Hi ${listing.landlord.name}, I'm interested in viewing the ${listing.title} (${listing.roomNumber}). When would be a good time for a visit? I'm available most weekdays and weekends. Thank you!`,
+  useEffect(() => {
+    const loadListing = async () => {
+      try {
+        setLoading(true);
+        const roomDetails = await getRoomDetailsForTenant(id);
+        setListing(roomDetails);
+      } catch (error) {
+        console.error("Error loading listing details:", error);
+        Alert.alert("Error", "Failed to load room details. Please try again.");
+        router.back();
+      } finally {
+        setLoading(false);
+      }
     };
 
-    Alert.alert(
-      action === "apply" ? "Apply for Room" : "Contact Landlord",
-      templates[action],
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Send Message",
-          onPress: () => Alert.alert("Success", "Message sent to landlord!"),
-        },
-        {
-          text: "Call Now",
-          onPress: () =>
-            Alert.alert("Calling", `Calling ${listing.landlord.phone}`),
-        },
-      ]
+    if (id) {
+      loadListing();
+    }
+  }, [id]);
+
+  if (loading) {
+    return (
+      <SafeAreaView
+        style={[styles.container, { backgroundColor: colors.background }]}
+      >
+        <View style={styles.loadingContainer}>
+          <ThemedText>Loading room details...</ThemedText>
+        </View>
+      </SafeAreaView>
     );
+  }
+
+  if (!listing || !listing.id) {
+    return (
+      <SafeAreaView
+        style={[styles.container, { backgroundColor: colors.background }]}
+      >
+        <View style={styles.loadingContainer}>
+          <ThemedText>Room not found</ThemedText>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const contactLandlord = (action = "inquire") => {
+    setMessageType(action);
+    setShowMessageModal(true);
+  };
+
+  const quickCall = () => {
+    if (listing?.landlord?.phone) {
+      makePhoneCall(listing.landlord.phone, listing.landlord.name);
+    } else {
+      Alert.alert("Error", "Phone number not available");
+    }
+  };
+
+  const handleApply = async (applicationMessage) => {
+    try {
+      // Get current tenant profile
+      const tenantProfile = await getCurrentTenantProfile();
+
+      // Submit application and create notification for landlord
+      const notificationResult = await notifyLandlordOfApplication(
+        listing?.landlord,
+        listing,
+        tenantProfile
+      );
+
+      if (notificationResult.success) {
+        Alert.alert(
+          "Application Submitted!",
+          `Your application for ${listing?.title} has been submitted successfully! The landlord will be notified in their notifications panel and will review your application soon.`,
+          [{ text: "OK" }]
+        );
+      } else {
+        // Application submission failed
+        Alert.alert(
+          "Application Error",
+          notificationResult.message ||
+            "Failed to submit your application. Please try again.",
+          [{ text: "OK" }]
+        );
+      }
+
+      // You could also add the application to a local storage or send to Firebase
+      console.log(
+        "Application submitted with notification result:",
+        notificationResult
+      );
+    } catch (error) {
+      console.error("Error submitting application:", error);
+      Alert.alert(
+        "Application Error",
+        "There was an error submitting your application. Please try again or contact the landlord directly.",
+        [{ text: "OK" }]
+      );
+    }
+  };
+
+  const handleBookmark = () => {
+    setIsFavorite(true);
+    Alert.alert(
+      "Room Bookmarked!",
+      `${listing?.title} has been added to your favorites. You can find it in your saved listings.`,
+      [{ text: "OK" }]
+    );
+    // You could also save to AsyncStorage or Firebase
   };
 
   const toggleFavorite = () => {
@@ -125,96 +155,112 @@ export default function ListingDetail() {
     // In real app: save to AsyncStorage and sync with backend
   };
 
-  const renderImageCarousel = () => (
-    <View style={styles.imageCarousel}>
-      <ScrollView
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        onMomentumScrollEnd={(e) => {
-          const index = Math.round(e.nativeEvent.contentOffset.x / width);
-          setCurrentImageIndex(index);
-        }}
-      >
-        {listing.images.map((image, index) => (
-          <TouchableOpacity key={index} onPress={() => setShowGallery(true)}>
-            <Image source={{ uri: image }} style={styles.carouselImage} />
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+  const renderImageCarousel = () => {
+    const images =
+      listing?.images && Array.isArray(listing.images) ? listing.images : [];
 
-      {/* Image Indicators */}
-      <View style={styles.imageIndicators}>
-        {listing.images.map((_, index) => (
-          <View
-            key={index}
-            style={[
-              styles.indicator,
-              {
-                backgroundColor:
-                  currentImageIndex === index
-                    ? "white"
-                    : "rgba(255,255,255,0.4)",
-              },
-            ]}
-          />
-        ))}
-      </View>
-
-      {/* Overlay Controls */}
-      <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-        <Ionicons name="arrow-back" size={24} color="white" />
-      </TouchableOpacity>
-
-      <TouchableOpacity style={styles.favoriteButton} onPress={toggleFavorite}>
-        <Ionicons
-          name={isFavorite ? "heart" : "heart-outline"}
-          size={24}
-          color={isFavorite ? "#FF3B30" : "white"}
-        />
-      </TouchableOpacity>
-    </View>
-  );
-
-  const GalleryModal = () => (
-    <Modal
-      visible={showGallery}
-      animationType="fade"
-      onRequestClose={() => setShowGallery(false)}
-    >
-      <SafeAreaView style={styles.galleryContainer}>
-        <View style={styles.galleryHeader}>
-          <TouchableOpacity onPress={() => setShowGallery(false)}>
-            <Ionicons name="close" size={24} color="white" />
-          </TouchableOpacity>
-          <ThemedText style={styles.galleryTitle}>
-            {currentImageIndex + 1} of {listing.images.length}
-          </ThemedText>
-          <View style={{ width: 24 }} />
-        </View>
-
+    return (
+      <View style={styles.imageCarousel}>
         <ScrollView
           horizontal
           pagingEnabled
           showsHorizontalScrollIndicator={false}
-          style={styles.galleryScroll}
-          contentOffset={{ x: currentImageIndex * width, y: 0 }}
           onMomentumScrollEnd={(e) => {
             const index = Math.round(e.nativeEvent.contentOffset.x / width);
             setCurrentImageIndex(index);
           }}
         >
-          {listing.images.map((image, index) => (
-            <Image
-              key={index}
-              source={{ uri: image }}
-              style={styles.galleryImage}
-            />
+          {images.map((image, index) => (
+            <TouchableOpacity key={index} onPress={() => setShowGallery(true)}>
+              <Image source={{ uri: image }} style={styles.carouselImage} />
+            </TouchableOpacity>
           ))}
         </ScrollView>
-      </SafeAreaView>
-    </Modal>
-  );
+
+        {/* Image Indicators */}
+        <View style={styles.imageIndicators}>
+          {images.map((_, index) => (
+            <View
+              key={index}
+              style={[
+                styles.indicator,
+                {
+                  backgroundColor:
+                    currentImageIndex === index
+                      ? "white"
+                      : "rgba(255,255,255,0.4)",
+                },
+              ]}
+            />
+          ))}
+        </View>
+
+        {/* Overlay Controls */}
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => router.back()}
+        >
+          <Ionicons name="arrow-back" size={24} color="white" />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.favoriteButton}
+          onPress={toggleFavorite}
+        >
+          <Ionicons
+            name={isFavorite ? "heart" : "heart-outline"}
+            size={24}
+            color={isFavorite ? "#FF3B30" : "white"}
+          />
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  const GalleryModal = () => {
+    const images =
+      listing?.images && Array.isArray(listing.images) ? listing.images : [];
+
+    return (
+      <Modal
+        visible={showGallery}
+        animationType="fade"
+        onRequestClose={() => setShowGallery(false)}
+      >
+        <SafeAreaView style={styles.galleryContainer}>
+          <View style={styles.galleryHeader}>
+            <TouchableOpacity onPress={() => setShowGallery(false)}>
+              <Ionicons name="close" size={24} color="white" />
+            </TouchableOpacity>
+            <ThemedText style={styles.galleryTitle}>
+              {currentImageIndex + 1} of {images.length}
+            </ThemedText>
+            <View style={{ width: 24 }} />
+          </View>
+
+          <ScrollView
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            style={styles.galleryScroll}
+            contentOffset={{ x: currentImageIndex * width, y: 0 }}
+            onMomentumScrollEnd={(e) => {
+              const index = Math.round(e.nativeEvent.contentOffset.x / width);
+              setCurrentImageIndex(index);
+            }}
+          >
+            {images.map((image, index) => (
+              <Image
+                key={index}
+                source={{ uri: image }}
+                style={styles.galleryImage}
+              />
+            ))}
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+    );
+  };
 
   return (
     <SafeAreaView
@@ -267,9 +313,9 @@ export default function ListingDetail() {
                 </ThemedText>
               </View>
               <View style={styles.roomDetail}>
-                <ThemedText style={styles.roomDetailLabel}>Floor</ThemedText>
+                <ThemedText style={styles.roomDetailLabel}>Status</ThemedText>
                 <ThemedText style={styles.roomDetailValue}>
-                  {listing.floor}
+                  {listing.available ? "Available" : "Occupied"}
                 </ThemedText>
               </View>
             </View>
@@ -284,45 +330,36 @@ export default function ListingDetail() {
           </View>
 
           {/* Amenities */}
-          <View style={styles.section}>
-            <ThemedText style={styles.sectionTitle}>Amenities</ThemedText>
-            <View style={styles.amenitiesGrid}>
-              {listing.amenities.map((amenity, index) => (
-                <View key={index} style={styles.amenityItem}>
-                  <View
-                    style={[
-                      styles.amenityIcon,
-                      {
-                        backgroundColor: amenity.included
-                          ? colors.tint + "20"
-                          : colors.text + "10",
-                      },
-                    ]}
-                  >
-                    <Ionicons
-                      name={amenity.icon}
-                      size={20}
-                      color={amenity.included ? colors.tint : colors.text}
-                      style={{ opacity: amenity.included ? 1 : 0.4 }}
-                    />
-                  </View>
-                  <ThemedText
-                    style={[
-                      styles.amenityName,
-                      { opacity: amenity.included ? 1 : 0.5 },
-                    ]}
-                  >
-                    {amenity.name}
-                  </ThemedText>
-                  {!amenity.included && (
-                    <ThemedText style={styles.notIncluded}>
-                      Not included
-                    </ThemedText>
-                  )}
+          {listing.amenities &&
+            Array.isArray(listing.amenities) &&
+            listing.amenities.length > 0 && (
+              <View style={styles.section}>
+                <ThemedText style={styles.sectionTitle}>Amenities</ThemedText>
+                <View style={styles.amenitiesGrid}>
+                  {listing.amenities.map((amenity, index) => (
+                    <View key={index} style={styles.amenityItem}>
+                      <View
+                        style={[
+                          styles.amenityIcon,
+                          {
+                            backgroundColor: colors.tint + "20",
+                          },
+                        ]}
+                      >
+                        <Ionicons
+                          name="checkmark"
+                          size={20}
+                          color={colors.tint}
+                        />
+                      </View>
+                      <ThemedText style={styles.amenityName}>
+                        {amenity}
+                      </ThemedText>
+                    </View>
+                  ))}
                 </View>
-              ))}
-            </View>
-          </View>
+              </View>
+            )}
 
           {/* Pricing Breakdown */}
           <View style={styles.section}>
@@ -330,84 +367,92 @@ export default function ListingDetail() {
             <View
               style={[styles.pricingCard, { backgroundColor: colors.card }]}
             >
-              {Object.entries(listing.pricing).map(([key, value]) => (
-                <View key={key} style={styles.pricingRow}>
-                  <ThemedText style={styles.pricingLabel}>
-                    {key === "monthlyRent"
-                      ? "Monthly Rent"
-                      : key === "securityDeposit"
-                      ? "Security Deposit"
-                      : key === "advancePayment"
-                      ? "Advance Payment"
-                      : key === "utilities"
-                      ? "Utilities"
-                      : "Total Move-in Cost"}
-                  </ThemedText>
-                  <ThemedText
-                    style={[
-                      styles.pricingValue,
-                      key === "totalMoveIn" && styles.totalAmount,
-                    ]}
-                  >
-                    {typeof value === "number"
-                      ? `₱${value.toLocaleString()}`
-                      : value}
-                  </ThemedText>
-                </View>
-              ))}
+              <View style={styles.pricingRow}>
+                <ThemedText style={styles.pricingLabel}>
+                  Monthly Rent
+                </ThemedText>
+                <ThemedText style={styles.pricingValue}>
+                  ₱{listing.monthlyRent.toLocaleString()}
+                </ThemedText>
+              </View>
+              <View style={styles.pricingRow}>
+                <ThemedText style={styles.pricingLabel}>
+                  Security Deposit
+                </ThemedText>
+                <ThemedText style={styles.pricingValue}>
+                  ₱{listing.deposit.toLocaleString()}
+                </ThemedText>
+              </View>
+              <View style={styles.pricingRow}>
+                <ThemedText style={styles.pricingLabel}>Utilities</ThemedText>
+                <ThemedText style={styles.pricingValue}>
+                  {listing.utilities &&
+                  Object.keys(listing.utilities).length > 0
+                    ? "Varies by usage"
+                    : "Not specified"}
+                </ThemedText>
+              </View>
+              <View style={styles.pricingRow}>
+                <ThemedText style={[styles.pricingLabel, styles.totalAmount]}>
+                  Total Move-in Cost
+                </ThemedText>
+                <ThemedText style={[styles.pricingValue, styles.totalAmount]}>
+                  ₱{(listing.monthlyRent + listing.deposit).toLocaleString()}
+                </ThemedText>
+              </View>
             </View>
           </View>
 
           {/* House Rules */}
-          <View style={styles.section}>
-            <ThemedText style={styles.sectionTitle}>House Rules</ThemedText>
-            <View style={[styles.rulesCard, { backgroundColor: colors.card }]}>
-              {listing.rules.map((rule, index) => (
-                <View key={index} style={styles.ruleItem}>
-                  <Ionicons
-                    name="checkmark-circle-outline"
-                    size={16}
-                    color={colors.tint}
-                  />
-                  <ThemedText style={styles.ruleText}>{rule}</ThemedText>
-                </View>
-              ))}
-            </View>
-          </View>
-
-          {/* Nearby Places */}
-          <View style={styles.section}>
-            <ThemedText style={styles.sectionTitle}>Nearby Places</ThemedText>
-            <View style={styles.nearbyList}>
-              {listing.nearbyPlaces.map((place, index) => (
+          {listing.rules &&
+            Array.isArray(listing.rules) &&
+            listing.rules.length > 0 && (
+              <View style={styles.section}>
+                <ThemedText style={styles.sectionTitle}>House Rules</ThemedText>
                 <View
-                  key={index}
-                  style={[styles.nearbyItem, { backgroundColor: colors.card }]}
+                  style={[styles.rulesCard, { backgroundColor: colors.card }]}
                 >
-                  <View
-                    style={[
-                      styles.nearbyIcon,
-                      { backgroundColor: colors.tint + "20" },
-                    ]}
-                  >
-                    <Ionicons name={place.icon} size={20} color={colors.tint} />
-                  </View>
-                  <View style={styles.nearbyInfo}>
-                    <ThemedText style={styles.nearbyName}>
-                      {place.name}
-                    </ThemedText>
-                    <ThemedText style={styles.nearbyDistance}>
-                      {place.distance}
-                    </ThemedText>
-                  </View>
+                  {listing.rules.map((rule, index) => (
+                    <View key={index} style={styles.ruleItem}>
+                      <Ionicons
+                        name="checkmark-circle-outline"
+                        size={16}
+                        color={colors.tint}
+                      />
+                      <ThemedText style={styles.ruleText}>{rule}</ThemedText>
+                    </View>
+                  ))}
                 </View>
-              ))}
+              </View>
+            )}
+
+          {/* Property Info */}
+          <View style={styles.section}>
+            <ThemedText style={styles.sectionTitle}>
+              Property Details
+            </ThemedText>
+            <View
+              style={[styles.propertyCard, { backgroundColor: colors.card }]}
+            >
+              <ThemedText style={styles.propertyName}>
+                {listing.property?.name || "Property"}
+              </ThemedText>
+              <ThemedText style={styles.propertyAddress}>
+                {listing.property?.address || "Address not specified"}
+              </ThemedText>
+              {listing.property?.description && (
+                <ThemedText style={styles.propertyDescription}>
+                  {listing.property.description}
+                </ThemedText>
+              )}
             </View>
           </View>
 
           {/* Landlord Info */}
           <View style={styles.section}>
-            <ThemedText style={styles.sectionTitle}>Landlord</ThemedText>
+            <ThemedText style={styles.sectionTitle}>
+              Contact Information
+            </ThemedText>
             <View
               style={[styles.landlordCard, { backgroundColor: colors.card }]}
             >
@@ -421,7 +466,7 @@ export default function ListingDetail() {
                   <ThemedText
                     style={[styles.landlordInitials, { color: colors.tint }]}
                   >
-                    {listing.landlord.name
+                    {(listing.landlord?.name || "PO")
                       .split(" ")
                       .map((n) => n[0])
                       .join("")}
@@ -430,9 +475,9 @@ export default function ListingDetail() {
                 <View style={styles.landlordInfo}>
                   <View style={styles.landlordNameRow}>
                     <ThemedText style={styles.landlordName}>
-                      {listing.landlord.name}
+                      {listing.landlord?.name || "Property Owner"}
                     </ThemedText>
-                    {listing.landlord.verified && (
+                    {listing.landlord?.verified && (
                       <Ionicons
                         name="checkmark-circle"
                         size={16}
@@ -440,16 +485,36 @@ export default function ListingDetail() {
                       />
                     )}
                   </View>
-                  <View style={styles.ratingRow}>
-                    <Ionicons name="star" size={14} color="#FFD60A" />
-                    <ThemedText style={styles.rating}>
-                      {listing.landlord.rating} ({listing.landlord.totalRatings}{" "}
-                      reviews)
-                    </ThemedText>
-                  </View>
-                  <ThemedText style={styles.responseTime}>
-                    {listing.landlord.responseTime}
+                  <ThemedText style={styles.landlordPhone}>
+                    {listing.landlord?.phone || "Contact via property"}
                   </ThemedText>
+                  <ThemedText style={styles.landlordEmail}>
+                    {listing.landlord?.email || "Contact via property"}
+                  </ThemedText>
+                </View>
+
+                {/* Quick Contact Buttons */}
+                <View style={styles.quickContactButtons}>
+                  {listing.landlord?.phone && (
+                    <TouchableOpacity
+                      style={[
+                        styles.quickContactButton,
+                        { backgroundColor: "#34C759" },
+                      ]}
+                      onPress={quickCall}
+                    >
+                      <Ionicons name="call" size={16} color="white" />
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity
+                    style={[
+                      styles.quickContactButton,
+                      { backgroundColor: colors.tint },
+                    ]}
+                    onPress={() => contactLandlord("inquire")}
+                  >
+                    <Ionicons name="chatbubble" size={16} color="white" />
+                  </TouchableOpacity>
                 </View>
               </View>
             </View>
@@ -491,6 +556,16 @@ export default function ListingDetail() {
       </View>
 
       <GalleryModal />
+
+      <MessageModal
+        visible={showMessageModal}
+        onClose={() => setShowMessageModal(false)}
+        landlordInfo={listing?.landlord}
+        roomInfo={listing}
+        messageType={messageType}
+        onApply={handleApply}
+        onBookmark={handleBookmark}
+      />
     </SafeAreaView>
   );
 }
@@ -799,5 +874,49 @@ const styles = StyleSheet.create({
     width: width,
     height: "100%",
     resizeMode: "contain",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  propertyCard: {
+    padding: 16,
+    borderRadius: 12,
+  },
+  propertyName: {
+    fontSize: 18,
+    fontWeight: "600",
+    marginBottom: 4,
+  },
+  propertyAddress: {
+    fontSize: 14,
+    opacity: 0.7,
+    marginBottom: 8,
+  },
+  propertyDescription: {
+    fontSize: 14,
+    lineHeight: 20,
+    opacity: 0.8,
+  },
+  landlordPhone: {
+    fontSize: 14,
+    opacity: 0.8,
+    marginBottom: 2,
+  },
+  landlordEmail: {
+    fontSize: 14,
+    opacity: 0.8,
+  },
+  quickContactButtons: {
+    flexDirection: "column",
+    gap: 8,
+  },
+  quickContactButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

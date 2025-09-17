@@ -21,12 +21,14 @@ import { Colors } from "@/constants/Colors";
 import { auth, db } from "@/constants/firebase";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { usePullRefresh } from "@/hooks/usePullRefresh";
+import { getAvailableRoomsForTenants } from "@/utils/roomHelpers";
 
 const { width } = Dimensions.get("window");
 
 export default function TenantDashboard() {
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [browseListings, setBrowseListings] = useState([]);
   const router = useRouter();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
@@ -37,13 +39,7 @@ export default function TenantDashboard() {
       // Simulate fetching fresh data
       console.log("Refreshing tenant dashboard data...");
 
-      // In a real app, you would:
-      // - Refetch user profile
-      // - Update payment history from API/Firebase
-      // - Refresh utility bills
-      // - Update tenant stats
-
-      // For now, we'll just refresh the user profile
+      // Fetch user profile
       const user = auth.currentUser;
       if (user) {
         const userDoc = await getDoc(doc(db, "users", user.uid));
@@ -51,6 +47,11 @@ export default function TenantDashboard() {
           setUserProfile(userDoc.data());
         }
       }
+
+      // Fetch available rooms for browsing
+      const availableRooms = await getAvailableRoomsForTenants();
+      // Limit to first 4 rooms for dashboard preview
+      setBrowseListings(availableRooms.slice(0, 4));
     } catch (error) {
       console.error("Error refreshing dashboard:", error);
     }
@@ -77,6 +78,9 @@ export default function TenantDashboard() {
             }
 
             setUserProfile(userData);
+
+            // Load initial data
+            await refreshDashboard();
           } else {
             // User profile doesn't exist, sign out
             console.log("User profile not found, signing out...");
@@ -156,37 +160,6 @@ export default function TenantDashboard() {
       subtitle: "Monthly rent",
       icon: "calendar-outline",
       color: "#34C759",
-    },
-  ];
-
-  const browseListings = [
-    {
-      roomNumber: "B-102",
-      type: "Single Room",
-      rent: "₱4,500/month",
-      available: true,
-      image: "https://via.placeholder.com/200x120/7ED321/FFFFFF?text=B-102",
-    },
-    {
-      roomNumber: "A-203",
-      type: "Double Room",
-      rent: "₱6,500/month",
-      available: true,
-      image: "https://via.placeholder.com/200x120/50E3C2/FFFFFF?text=A-203",
-    },
-    {
-      roomNumber: "C-105",
-      type: "Studio",
-      rent: "₱7,000/month",
-      available: false,
-      image: "https://via.placeholder.com/200x120/BD10E0/FFFFFF?text=C-105",
-    },
-    {
-      roomNumber: "B-201",
-      type: "Single Room",
-      rent: "₱5,200/month",
-      available: true,
-      image: "https://via.placeholder.com/200x120/F5A623/FFFFFF?text=B-201",
     },
   ];
 
@@ -412,11 +385,11 @@ export default function TenantDashboard() {
                 key={index}
                 style={[styles.browseCard, { backgroundColor: colors.card }]}
                 onPress={() =>
-                  Alert.alert("Room Details", `Viewing ${listing.roomNumber}`)
+                  router.push(`/tenant/browse/listing-detail/${listing.id}`)
                 }
               >
                 <Image
-                  source={{ uri: listing.image }}
+                  source={{ uri: listing.images[0] }}
                   style={styles.browseImage}
                 />
                 <View style={styles.browseDetails}>
@@ -427,7 +400,7 @@ export default function TenantDashboard() {
                     {listing.type}
                   </ThemedText>
                   <ThemedText style={styles.browseRent}>
-                    {listing.rent}
+                    ₱{listing.price?.toLocaleString()}/month
                   </ThemedText>
                   <View
                     style={[
@@ -453,6 +426,23 @@ export default function TenantDashboard() {
                 </View>
               </TouchableOpacity>
             ))}
+
+            {browseListings.length === 0 && !loading && (
+              <View style={styles.noRoomsContainer}>
+                <Ionicons
+                  name="home-outline"
+                  size={48}
+                  color={colors.text}
+                  style={{ opacity: 0.3 }}
+                />
+                <ThemedText style={styles.noRoomsText}>
+                  No available rooms at the moment
+                </ThemedText>
+                <ThemedText style={styles.noRoomsSubtext}>
+                  Check back later for new listings
+                </ThemedText>
+              </View>
+            )}
           </ScrollView>
         </ThemedView>
 
@@ -542,9 +532,7 @@ export default function TenantDashboard() {
           <View style={styles.sectionHeader}>
             <ThemedText style={styles.sectionTitle}>Payment History</ThemedText>
             <TouchableOpacity
-              onPress={() =>
-                Alert.alert("View All", "Full payment history coming soon!")
-              }
+              onPress={() => router.push("/tenant/payments/payment-history")}
             >
               <ThemedText style={[styles.viewAllText, { color: colors.tint }]}>
                 View All
@@ -985,5 +973,24 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+  },
+  noRoomsContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+    width: width - 32,
+  },
+  noRoomsText: {
+    fontSize: 16,
+    fontWeight: "600",
+    marginTop: 12,
+    textAlign: "center",
+  },
+  noRoomsSubtext: {
+    fontSize: 14,
+    opacity: 0.6,
+    marginTop: 4,
+    textAlign: "center",
   },
 });

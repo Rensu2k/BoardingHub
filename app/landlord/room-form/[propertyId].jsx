@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Alert,
   Dimensions,
@@ -18,6 +19,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { ThemedText } from "@/components/ThemedText";
 import { Colors } from "@/constants/Colors";
 import { useColorScheme } from "@/hooks/useColorScheme";
+import { addRoom, getRoomById, updateRoom } from "@/utils/roomHelpers";
 
 const { width } = Dimensions.get("window");
 
@@ -48,6 +50,23 @@ const UtilityField = ({
     </ThemedText>
 
     <View style={styles.utilityTypeSelector}>
+      <TouchableOpacity
+        style={[
+          styles.typeButton,
+          config.type === "free" && { backgroundColor: "#34C759" },
+        ]}
+        onPress={() => updateUtility(utility, "type", "free")}
+      >
+        <ThemedText
+          style={[
+            styles.typeButtonText,
+            config.type === "free" && { color: "white" },
+          ]}
+        >
+          Free
+        </ThemedText>
+      </TouchableOpacity>
+
       <TouchableOpacity
         style={[
           styles.typeButton,
@@ -83,32 +102,43 @@ const UtilityField = ({
       </TouchableOpacity>
     </View>
 
-    <View style={styles.utilityInput}>
-      <TextInput
-        style={[
-          styles.input,
-          { backgroundColor: colors.card, color: colors.text },
-        ]}
-        placeholder={config.type === "flat" ? "Amount (₱)" : "Rate (₱)"}
-        placeholderTextColor={colors.text + "60"}
-        value={config.type === "flat" ? config.amount : config.rate}
-        onChangeText={(value) =>
-          updateUtility(
-            utility,
-            config.type === "flat" ? "amount" : "rate",
-            value
-          )
-        }
-        keyboardType="numeric"
-      />
-      <ThemedText style={styles.unitText}>
-        {config.type === "flat"
-          ? "₱/month"
-          : utility === "electricity"
-          ? "₱/kWh"
-          : "₱/unit"}
-      </ThemedText>
-    </View>
+    {config.type !== "free" && (
+      <View style={styles.utilityInput}>
+        <TextInput
+          style={[
+            styles.input,
+            { backgroundColor: colors.card, color: colors.text },
+          ]}
+          placeholder={config.type === "flat" ? "Amount (₱)" : "Rate (₱)"}
+          placeholderTextColor={colors.text + "60"}
+          value={config.type === "flat" ? config.amount : config.rate}
+          onChangeText={(value) =>
+            updateUtility(
+              utility,
+              config.type === "flat" ? "amount" : "rate",
+              value
+            )
+          }
+          keyboardType="numeric"
+        />
+        <ThemedText style={styles.unitText}>
+          {config.type === "flat"
+            ? "₱/month"
+            : utility === "electricity"
+            ? "₱/kWh"
+            : "₱/unit"}
+        </ThemedText>
+      </View>
+    )}
+
+    {config.type === "free" && (
+      <View style={styles.freeUtilityIndicator}>
+        <Ionicons name="checkmark-circle" size={20} color="#34C759" />
+        <ThemedText style={styles.freeUtilityText}>
+          This utility is included at no extra charge
+        </ThemedText>
+      </View>
+    )}
 
     {errors[
       `utilities.${utility}.${config.type === "flat" ? "amount" : "rate"}`
@@ -131,6 +161,77 @@ export default function RoomFormScreen() {
   const colors = Colors[colorScheme ?? "light"];
 
   const isEditing = !!roomId;
+
+  // Request permissions on component mount
+  useEffect(() => {
+    const requestPermissions = async () => {
+      await ImagePicker.requestCameraPermissionsAsync();
+      await ImagePicker.requestMediaLibraryPermissionsAsync();
+    };
+    requestPermissions();
+  }, []);
+
+  // Load existing room data when editing
+  useEffect(() => {
+    const loadRoomData = async () => {
+      if (isEditing && roomId) {
+        try {
+          setIsLoading(true);
+          const roomData = await getRoomById(roomId);
+
+          // Populate form with existing data
+          setFormData({
+            number: roomData.number || "",
+            type: roomData.type || "Studio",
+            rent: roomData.rent ? roomData.rent.toString() : "",
+            status: roomData.status || "vacant",
+            utilities: {
+              electricity: {
+                type: roomData.utilities?.electricity?.type || "per-tenant",
+                rate: roomData.utilities?.electricity?.rate
+                  ? roomData.utilities.electricity.rate.toString()
+                  : "12",
+                amount: roomData.utilities?.electricity?.amount
+                  ? roomData.utilities.electricity.amount.toString()
+                  : "",
+              },
+              water: {
+                type: roomData.utilities?.water?.type || "flat",
+                rate: roomData.utilities?.water?.rate
+                  ? roomData.utilities.water.rate.toString()
+                  : "",
+                amount: roomData.utilities?.water?.amount
+                  ? roomData.utilities.water.amount.toString()
+                  : "200",
+              },
+              wifi: {
+                type: roomData.utilities?.wifi?.type || "flat",
+                rate: roomData.utilities?.wifi?.rate
+                  ? roomData.utilities.wifi.rate.toString()
+                  : "",
+                amount: roomData.utilities?.wifi?.amount
+                  ? roomData.utilities.wifi.amount.toString()
+                  : "500",
+              },
+            },
+            meterIds: {
+              electricity: roomData.meterIds?.electricity || "",
+              water: roomData.meterIds?.water || "",
+            },
+            photos: roomData.photos || [],
+            notes: roomData.notes || "",
+          });
+        } catch (error) {
+          console.error("Error loading room data:", error);
+          Alert.alert("Error", "Failed to load room data. Please try again.");
+        } finally {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    loadRoomData();
+  }, [isEditing, roomId]);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -195,11 +296,13 @@ export default function RoomFormScreen() {
           ] = `Valid ${utility} amount is required`;
         }
       }
+      // No validation needed for "free" type
     });
 
-    // Validate meter IDs
+    // Validate meter IDs (only for non-free utilities)
     Object.entries(formData.meterIds).forEach(([utility, meterId]) => {
-      if (!meterId.trim()) {
+      const utilityConfig = formData.utilities[utility];
+      if (utilityConfig && utilityConfig.type !== "free" && !meterId.trim()) {
         newErrors[`meterIds.${utility}`] = `${
           utility.charAt(0).toUpperCase() + utility.slice(1)
         } meter ID is required`;
@@ -222,8 +325,37 @@ export default function RoomFormScreen() {
     setIsLoading(true);
 
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // Prepare room data for Firebase
+      const roomData = {
+        ...formData,
+        rent: parseFloat(formData.rent),
+        utilities: Object.fromEntries(
+          Object.entries(formData.utilities).map(([utility, config]) => [
+            utility,
+            {
+              type: config.type,
+              ...(config.type === "flat" && {
+                amount: parseFloat(config.amount),
+              }),
+              ...(config.type === "per-tenant" && {
+                rate: parseFloat(config.rate),
+              }),
+            },
+          ])
+        ),
+        // Only include meter IDs for non-free utilities
+        meterIds: Object.fromEntries(
+          Object.entries(formData.meterIds).filter(
+            ([utility]) => formData.utilities[utility]?.type !== "free"
+          )
+        ),
+      };
+
+      if (isEditing) {
+        await updateRoom(roomId, roomData);
+      } else {
+        await addRoom(propertyId, roomData);
+      }
 
       Alert.alert(
         "Success",
@@ -236,6 +368,7 @@ export default function RoomFormScreen() {
         ]
       );
     } catch (error) {
+      console.error("Error saving room:", error);
       Alert.alert("Error", "Failed to save room. Please try again.");
     } finally {
       setIsLoading(false);
@@ -244,10 +377,75 @@ export default function RoomFormScreen() {
 
   const handlePhotoUpload = () => {
     Alert.alert("Add Photo", "Choose photo source", [
-      { text: "Camera", onPress: () => console.log("Camera selected") },
-      { text: "Gallery", onPress: () => console.log("Gallery selected") },
+      { text: "Camera", onPress: openCamera },
+      { text: "Gallery", onPress: openGallery },
       { text: "Cancel", style: "cancel" },
     ]);
+  };
+
+  const openCamera = async () => {
+    try {
+      // Request camera permissions
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert(
+          "Permission Required",
+          "Camera access is required to take photos. Please enable camera permissions in your device settings."
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        addPhoto(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error("Error opening camera:", error);
+      Alert.alert("Error", "Failed to open camera. Please try again.");
+    }
+  };
+
+  const openGallery = async () => {
+    try {
+      // Request media library permissions
+      const { status } =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert(
+          "Permission Required",
+          "Photo library access is required to select photos. Please enable photo permissions in your device settings."
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+        allowsMultipleSelection: false,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        addPhoto(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error("Error opening gallery:", error);
+      Alert.alert("Error", "Failed to open gallery. Please try again.");
+    }
+  };
+
+  const addPhoto = (uri) => {
+    setFormData((prev) => ({
+      ...prev,
+      photos: [...prev.photos, uri],
+    }));
   };
 
   const removePhoto = (index) => {
@@ -319,6 +517,15 @@ export default function RoomFormScreen() {
             </ThemedText>
           </TouchableOpacity>
         </View>
+
+        {/* Loading indicator when fetching room data */}
+        {isLoading && isEditing && (
+          <View style={styles.loadingContainer}>
+            <ThemedText style={styles.loadingText}>
+              Loading room data...
+            </ThemedText>
+          </View>
+        )}
 
         <ScrollView
           style={styles.scrollView}
@@ -699,5 +906,30 @@ const styles = StyleSheet.create({
     color: "#FF3B30",
     fontSize: 14,
     marginTop: 4,
+  },
+  freeUtilityIndicator: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: "#E8F5E8",
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  freeUtilityText: {
+    fontSize: 14,
+    color: "#34C759",
+    fontWeight: "500",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 40,
+  },
+  loadingText: {
+    fontSize: 16,
+    opacity: 0.7,
   },
 });

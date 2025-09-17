@@ -21,6 +21,8 @@ import { ThemedView } from "@/components/ThemedView";
 import { Colors } from "@/constants/Colors";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { usePullRefresh } from "@/hooks/usePullRefresh";
+import { showContactOptions } from "@/utils/communicationHelpers";
+import { getAvailableRoomsForTenants } from "@/utils/roomHelpers";
 
 const { width } = Dimensions.get("window");
 
@@ -35,223 +37,43 @@ export default function ListingsBrowse() {
   });
   const [favorites, setFavorites] = useState([]);
   const [listings, setListings] = useState([]);
+  const [loading, setLoading] = useState(true);
   const router = useRouter();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
 
-  // Mock listings data - replace with real API data
-  const allListings = [
-    {
-      id: 1,
-      title: "Cozy Single Room - Downtown",
-      price: 4500,
-      location: "Makati City",
-      description:
-        "Perfect for students and young professionals. Walking distance to MRT.",
-      images: [
-        "https://via.placeholder.com/300x200/4A90E2/FFFFFF?text=Room+1-1",
-        "https://via.placeholder.com/300x200/7ED321/FFFFFF?text=Room+1-2",
-        "https://via.placeholder.com/300x200/F5A623/FFFFFF?text=Room+1-3",
-      ],
-      roomNumber: "A-101",
-      size: "12 sqm",
-      type: "Single Room",
-      available: true,
-      landlord: {
-        name: "Ms. Maria Santos",
-        phone: "+63 912 345 6789",
-        email: "maria.santos@email.com",
-        verified: true,
-      },
-      amenities: ["WiFi", "Air Conditioning", "Private Bathroom", "Study Desk"],
-      rules: [
-        "No smoking inside the room",
-        "No pets allowed",
-        "Quiet hours: 10PM - 6AM",
-        "No overnight guests without prior notice",
-      ],
-      deposit: 9000,
-      monthlyRent: 4500,
-      utilities: "Excluded",
-    },
-    {
-      id: 2,
-      title: "Spacious Studio Apartment",
-      price: 7000,
-      location: "Quezon City",
-      description:
-        "Modern studio with kitchenette. Great for couples or single professionals.",
-      images: [
-        "https://via.placeholder.com/300x200/BD10E0/FFFFFF?text=Studio+1",
-        "https://via.placeholder.com/300x200/50E3C2/FFFFFF?text=Studio+2",
-      ],
-      roomNumber: "B-205",
-      size: "25 sqm",
-      type: "Studio",
-      available: true,
-      landlord: {
-        name: "Mr. John Dela Cruz",
-        phone: "+63 917 234 5678",
-        email: "john.delacruz@email.com",
-        verified: true,
-      },
-      amenities: [
-        "WiFi",
-        "Air Conditioning",
-        "Kitchenette",
-        "Balcony",
-        "Parking",
-      ],
-      rules: [
-        "No smoking anywhere in the building",
-        "Pets allowed with deposit",
-        "Quiet hours: 9PM - 7AM",
-        "Maximum 2 occupants",
-      ],
-      deposit: 14000,
-      monthlyRent: 7000,
-      utilities: "Included",
-    },
-    {
-      id: 3,
-      title: "Shared Double Room",
-      price: 3500,
-      location: "Pasig City",
-      description:
-        "Looking for a roommate to share this comfortable double room.",
-      images: [
-        "https://via.placeholder.com/300x200/F5A623/FFFFFF?text=Double+1",
-      ],
-      roomNumber: "C-102",
-      size: "18 sqm",
-      type: "Double Room",
-      available: true,
-      landlord: {
-        name: "Ms. Ana Reyes",
-        phone: "+63 920 123 4567",
-        email: "ana.reyes@email.com",
-        verified: false,
-      },
-      amenities: ["WiFi", "Air Conditioning", "Shared Bathroom", "Common Area"],
-      rules: [
-        "No smoking",
-        "Respect roommate's privacy",
-        "Keep common areas clean",
-        "No loud music after 10PM",
-      ],
-      deposit: 7000,
-      monthlyRent: 3500,
-      utilities: "Split between roommates",
-    },
-    {
-      id: 4,
-      title: "Premium Single with Balcony",
-      price: 6500,
-      location: "BGC, Taguig",
-      description:
-        "High-end single room in modern building with gym and pool access.",
-      images: [
-        "https://via.placeholder.com/300x200/9013FE/FFFFFF?text=Premium+1",
-        "https://via.placeholder.com/300x200/4A90E2/FFFFFF?text=Premium+2",
-      ],
-      roomNumber: "D-301",
-      size: "15 sqm",
-      type: "Single Room",
-      available: false,
-      landlord: {
-        name: "Mr. Robert Tan",
-        phone: "+63 918 765 4321",
-        email: "robert.tan@email.com",
-        verified: true,
-      },
-      amenities: [
-        "WiFi",
-        "Air Conditioning",
-        "Private Bathroom",
-        "Balcony",
-        "Gym Access",
-        "Pool Access",
-      ],
-      rules: [
-        "No smoking",
-        "No pets",
-        "Building rules apply",
-        "Visitors must register at lobby",
-      ],
-      deposit: 13000,
-      monthlyRent: 6500,
-      utilities: "Included",
-    },
-  ];
+  const loadListings = async () => {
+    try {
+      setLoading(true);
+      const filters = {
+        priceRange: selectedFilters.priceRange,
+        roomType: selectedFilters.roomType,
+        searchQuery: searchQuery,
+        amenities: selectedFilters.amenities,
+      };
+
+      const availableRooms = await getAvailableRoomsForTenants(filters);
+      setListings(availableRooms);
+    } catch (error) {
+      console.error("Error loading listings:", error);
+      Alert.alert("Error", "Failed to load room listings. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     // Load favorites from storage (mock implementation)
     const savedFavorites = []; // In real app: AsyncStorage.getItem('favorites')
     setFavorites(savedFavorites);
 
-    // Apply filters
-    filterListings();
+    // Load listings
+    loadListings();
   }, [searchQuery, selectedFilters]);
-
-  const filterListings = () => {
-    let filtered = allListings;
-
-    // Search filter
-    if (searchQuery) {
-      filtered = filtered.filter(
-        (listing) =>
-          listing.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          listing.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          listing.description.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-    }
-
-    // Availability filter
-    if (selectedFilters.availability === "available") {
-      filtered = filtered.filter((listing) => listing.available);
-    }
-
-    // Price range filter
-    if (selectedFilters.priceRange !== "all") {
-      const ranges = {
-        "under-4000": [0, 4000],
-        "4000-6000": [4000, 6000],
-        "6000-8000": [6000, 8000],
-        "above-8000": [8000, Infinity],
-      };
-      const [min, max] = ranges[selectedFilters.priceRange] || [0, Infinity];
-      filtered = filtered.filter(
-        (listing) => listing.price >= min && listing.price < max
-      );
-    }
-
-    // Room type filter
-    if (selectedFilters.roomType !== "all") {
-      filtered = filtered.filter((listing) =>
-        listing.type
-          .toLowerCase()
-          .includes(selectedFilters.roomType.toLowerCase())
-      );
-    }
-
-    // Amenities filter
-    if (selectedFilters.amenities.length > 0) {
-      filtered = filtered.filter((listing) =>
-        selectedFilters.amenities.every((amenity) =>
-          listing.amenities.some((listingAmenity) =>
-            listingAmenity.toLowerCase().includes(amenity.toLowerCase())
-          )
-        )
-      );
-    }
-
-    setListings(filtered);
-  };
 
   const refreshListings = async () => {
     console.log("Refreshing listings...");
-    // Simulate API call
-    filterListings();
+    await loadListings();
   };
 
   const { refreshing, onRefresh } = usePullRefresh(refreshListings);
@@ -266,24 +88,7 @@ export default function ListingsBrowse() {
   };
 
   const contactLandlord = (listing) => {
-    const template = `Hi ${listing.landlord.name}, I'm interested in the ${
-      listing.title
-    } (${
-      listing.roomNumber
-    }) listed at ₱${listing.price.toLocaleString()}/month. Could you please provide more details about availability and viewing schedule? Thank you!`;
-
-    Alert.alert("Contact Landlord", template, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Send Message",
-        onPress: () => Alert.alert("Success", "Message sent to landlord!"),
-      },
-      {
-        text: "Call Now",
-        onPress: () =>
-          Alert.alert("Calling", `Calling ${listing.landlord.phone}`),
-      },
-    ]);
+    showContactOptions(listing.landlord, listing, "inquire");
   };
 
   const renderListingCard = ({ item }) => (
@@ -488,21 +293,23 @@ export default function ListingsBrowse() {
                 </ThemedText>
               </View>
             )}
-            {selectedFilters.amenities.map((amenity) => (
-              <View
-                key={amenity}
-                style={[
-                  styles.filterChip,
-                  { backgroundColor: colors.tint + "20" },
-                ]}
-              >
-                <ThemedText
-                  style={[styles.filterChipText, { color: colors.tint }]}
+            {selectedFilters.amenities &&
+              Array.isArray(selectedFilters.amenities) &&
+              selectedFilters.amenities.map((amenity) => (
+                <View
+                  key={amenity}
+                  style={[
+                    styles.filterChip,
+                    { backgroundColor: colors.tint + "20" },
+                  ]}
                 >
-                  {amenity}
-                </ThemedText>
-              </View>
-            ))}
+                  <ThemedText
+                    style={[styles.filterChipText, { color: colors.tint }]}
+                  >
+                    {amenity}
+                  </ThemedText>
+                </View>
+              ))}
           </ScrollView>
         )}
       </ThemedView>
@@ -529,9 +336,13 @@ export default function ListingsBrowse() {
               color={colors.text}
               style={{ opacity: 0.3 }}
             />
-            <ThemedText style={styles.emptyTitle}>No listings found</ThemedText>
+            <ThemedText style={styles.emptyTitle}>
+              {loading ? "Loading rooms..." : "No listings found"}
+            </ThemedText>
             <ThemedText style={styles.emptySubtitle}>
-              Try adjusting your search or filters
+              {loading
+                ? "Please wait while we fetch available rooms"
+                : "Try adjusting your search or filters"}
             </ThemedText>
           </View>
         }

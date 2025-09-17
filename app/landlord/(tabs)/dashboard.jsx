@@ -1,8 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Alert,
   Dimensions,
@@ -20,36 +20,81 @@ import { Colors } from "@/constants/Colors";
 import { auth, db } from "@/constants/firebase";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { usePullRefresh } from "@/hooks/usePullRefresh";
+import { getUserProperties } from "@/utils/propertyHelpers";
+import { getAllRegisteredTenants, getTenantStatistics } from "@/utils/tenantHelpers";
 
 const { width } = Dimensions.get("window");
 
 export default function LandlordDashboard() {
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [dashboardData, setDashboardData] = useState({
+    properties: [],
+    tenants: [],
+    stats: {
+      totalProperties: 0,
+      occupiedRooms: 0,
+      monthlyRevenue: 0,
+      pendingPayments: 0,
+    },
+  });
   const router = useRouter();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
 
+  // Load dashboard data from Firebase
+  const loadDashboardData = async () => {
+    try {
+      const user = auth.currentUser;
+      if (!user) return;
+
+      // Load user profile
+      const userDoc = await getDoc(doc(db, "users", user.uid));
+      if (userDoc.exists()) {
+        setUserProfile(userDoc.data());
+      }
+
+      // Load properties and tenants data
+      const [properties, tenants] = await Promise.all([
+        getUserProperties(user.uid),
+        getAllRegisteredTenants(),
+      ]);
+
+      // Calculate statistics
+      const tenantStats = getTenantStatistics(tenants);
+      const totalRooms = properties.reduce((sum, property) => {
+        return sum + (property.rooms || []).length;
+      }, 0);
+      const occupiedRooms = tenants.filter(t => t.status === 'active').length;
+      const monthlyRevenue = properties.reduce((sum, property) => {
+        const propertyRevenue = (property.rooms || []).reduce((roomSum, room) => {
+          const tenant = tenants.find(t => t.roomNumber === room.number && t.status === 'active');
+          return roomSum + (tenant ? (room.rent || 0) : 0);
+        }, 0);
+        return sum + propertyRevenue;
+      }, 0);
+      const pendingPayments = tenants.filter(t => t.status === 'overdue').length;
+
+      setDashboardData({
+        properties,
+        tenants,
+        stats: {
+          totalProperties: properties.length,
+          occupiedRooms,
+          monthlyRevenue,
+          pendingPayments,
+        },
+      });
+    } catch (error) {
+      console.error("Error loading dashboard data:", error);
+    }
+  };
+
   // Refresh function to reload dashboard data
   const refreshDashboard = async () => {
     try {
-      // Simulate fetching fresh data
       console.log("Refreshing landlord dashboard data...");
-
-      // In a real app, you would:
-      // - Refetch user profile
-      // - Update dashboard stats from API/Firebase
-      // - Refresh recent activities
-      // - Update KPI data
-
-      // For now, we'll just refresh the user profile
-      const user = auth.currentUser;
-      if (user) {
-        const userDoc = await getDoc(doc(db, "users", user.uid));
-        if (userDoc.exists()) {
-          setUserProfile(userDoc.data());
-        }
-      }
+      await loadDashboardData();
     } catch (error) {
       console.error("Error refreshing dashboard:", error);
     }
@@ -96,6 +141,15 @@ export default function LandlordDashboard() {
     return () => unsubscribe();
   }, []);
 
+  // Load dashboard data when screen focuses
+  useFocusEffect(
+    useCallback(() => {
+      if (auth.currentUser) {
+        loadDashboardData();
+      }
+    }, [])
+  );
+
   const handleLogout = async () => {
     Alert.alert("Logout", "Are you sure you want to logout?", [
       { text: "Cancel", style: "cancel" },
@@ -130,25 +184,25 @@ export default function LandlordDashboard() {
   const dashboardStats = [
     {
       title: "Total Properties",
-      value: "3",
+      value: dashboardData.stats.totalProperties.toString(),
       icon: "business-outline",
       color: "#007AFF",
     },
     {
       title: "Occupied Rooms",
-      value: "12",
+      value: dashboardData.stats.occupiedRooms.toString(),
       icon: "people-outline",
       color: "#34C759",
     },
     {
       title: "Monthly Revenue",
-      value: "₱45,000",
+      value: `₱${dashboardData.stats.monthlyRevenue.toLocaleString()}`,
       icon: "cash-outline",
       color: "#FF9500",
     },
     {
       title: "Pending Payments",
-      value: "2",
+      value: dashboardData.stats.pendingPayments.toString(),
       icon: "time-outline",
       color: "#FF3B30",
     },
@@ -158,14 +212,12 @@ export default function LandlordDashboard() {
     {
       title: "Add Property",
       icon: "add-circle-outline",
-      action: () =>
-        Alert.alert("Coming Soon", "Property management coming soon!"),
+      action: () => router.push("/landlord/add-property"),
     },
     {
       title: "View Tenants",
       icon: "people-circle-outline",
-      action: () =>
-        Alert.alert("Coming Soon", "Tenant management coming soon!"),
+      action: () => router.push("/landlord/(tabs)/tenants"),
     },
     {
       title: "Send Reminder",
@@ -180,29 +232,82 @@ export default function LandlordDashboard() {
     },
   ];
 
-  const recentActivities = [
-    {
-      type: "payment",
-      message: "Juan Dela Cruz paid ₱5,000 rent",
-      time: "2 hours ago",
-      icon: "checkmark-circle-outline",
-      color: "#34C759",
-    },
-    {
-      type: "tenant",
-      message: "New tenant Maria Santos moved in",
-      time: "1 day ago",
-      icon: "person-add-outline",
-      color: "#007AFF",
-    },
-    {
-      type: "reminder",
-      message: "Rent due reminder sent to 3 tenants",
-      time: "2 days ago",
-      icon: "notifications-outline",
-      color: "#FF9500",
-    },
-  ];
+  // Generate recent activities from actual data
+  const getRecentActivities = () => {
+    const activities = [];
+    
+    // Add recent tenant registrations
+    const recentTenants = dashboardData.tenants
+      .filter(tenant => tenant.createdAt)
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      .slice(0, 2);
+    
+    recentTenants.forEach(tenant => {
+      const timeAgo = getTimeAgo(tenant.createdAt);
+      activities.push({
+        type: "tenant",
+        message: `${tenant.name} registered as new tenant`,
+        time: timeAgo,
+        icon: "person-add-outline",
+        color: "#007AFF",
+      });
+    });
+    
+    // Add active tenants info
+    const activeTenants = dashboardData.tenants.filter(t => t.status === 'active');
+    if (activeTenants.length > 0) {
+      activities.push({
+        type: "status",
+        message: `${activeTenants.length} tenant${activeTenants.length > 1 ? 's' : ''} currently active`,
+        time: "Current status",
+        icon: "checkmark-circle-outline",
+        color: "#34C759",
+      });
+    }
+    
+    // Add overdue payments info
+    const overdueTenants = dashboardData.tenants.filter(t => t.status === 'overdue');
+    if (overdueTenants.length > 0) {
+      activities.push({
+        type: "payment",
+        message: `${overdueTenants.length} tenant${overdueTenants.length > 1 ? 's have' : ' has'} overdue payments`,
+        time: "Needs attention",
+        icon: "time-outline",
+        color: "#FF3B30",
+      });
+    }
+    
+    // Add property info
+    if (dashboardData.properties.length > 0) {
+      activities.push({
+        type: "property",
+        message: `Managing ${dashboardData.properties.length} propert${dashboardData.properties.length > 1 ? 'ies' : 'y'}`,
+        time: "Overview",
+        icon: "business-outline",
+        color: "#007AFF",
+      });
+    }
+    
+    return activities.slice(0, 4); // Limit to 4 activities
+  };
+  
+  // Helper function to calculate time ago
+  const getTimeAgo = (dateString) => {
+    if (!dateString) return "Recently";
+    
+    const now = new Date();
+    const date = new Date(dateString);
+    const diffInMs = now - date;
+    const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
+    
+    if (diffInDays === 0) return "Today";
+    if (diffInDays === 1) return "1 day ago";
+    if (diffInDays < 7) return `${diffInDays} days ago`;
+    if (diffInDays < 30) return `${Math.floor(diffInDays / 7)} week${Math.floor(diffInDays / 7) > 1 ? 's' : ''} ago`;
+    return `${Math.floor(diffInDays / 30)} month${Math.floor(diffInDays / 30) > 1 ? 's' : ''} ago`;
+  };
+  
+  const recentActivities = getRecentActivities();
 
   return (
     <SafeAreaView
@@ -259,10 +364,10 @@ export default function LandlordDashboard() {
                 onPress={() => {
                   // Navigate to relevant screens based on KPI type
                   if (stat.title.includes("Properties")) {
-                    router.push("/landlord/properties");
-                  } else if (stat.title.includes("Tenants")) {
-                    router.push("/landlord/tenants");
-                  } else if (stat.title.includes("Pending")) {
+                    router.push("/landlord/(tabs)/properties");
+                  } else if (stat.title.includes("Occupied") || stat.title.includes("Pending")) {
+                    router.push("/landlord/(tabs)/tenants");
+                  } else if (stat.title.includes("Revenue")) {
                     router.push("/landlord/billing");
                   }
                 }}
@@ -288,33 +393,45 @@ export default function LandlordDashboard() {
         <ThemedView style={styles.activitySection}>
           <ThemedText style={styles.sectionTitle}>Recent Activity</ThemedText>
           <View style={styles.activityList}>
-            {recentActivities.map((activity, index) => (
-              <View
-                key={index}
-                style={[styles.activityItem, { backgroundColor: colors.card }]}
-              >
+            {recentActivities.length > 0 ? (
+              recentActivities.map((activity, index) => (
                 <View
-                  style={[
-                    styles.activityIcon,
-                    { backgroundColor: activity.color + "20" },
-                  ]}
+                  key={index}
+                  style={[styles.activityItem, { backgroundColor: colors.card }]}
                 >
-                  <Ionicons
-                    name={activity.icon}
-                    size={20}
-                    color={activity.color}
-                  />
+                  <View
+                    style={[
+                      styles.activityIcon,
+                      { backgroundColor: activity.color + "20" },
+                    ]}
+                  >
+                    <Ionicons
+                      name={activity.icon}
+                      size={20}
+                      color={activity.color}
+                    />
+                  </View>
+                  <View style={styles.activityContent}>
+                    <ThemedText style={styles.activityMessage}>
+                      {activity.message}
+                    </ThemedText>
+                    <ThemedText style={styles.activityTime}>
+                      {activity.time}
+                    </ThemedText>
+                  </View>
                 </View>
-                <View style={styles.activityContent}>
-                  <ThemedText style={styles.activityMessage}>
-                    {activity.message}
-                  </ThemedText>
-                  <ThemedText style={styles.activityTime}>
-                    {activity.time}
-                  </ThemedText>
-                </View>
+              ))
+            ) : (
+              <View style={styles.emptyActivity}>
+                <Ionicons name="time-outline" size={48} color={colors.text + "40"} />
+                <ThemedText style={styles.emptyActivityText}>
+                  No recent activity yet
+                </ThemedText>
+                <ThemedText style={styles.emptyActivitySubtext}>
+                  Activity will appear here as you manage your properties
+                </ThemedText>
               </View>
-            ))}
+            )}
           </View>
         </ThemedView>
 
@@ -557,5 +674,22 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 6,
+  },
+  emptyActivity: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 40,
+  },
+  emptyActivityText: {
+    fontSize: 16,
+    opacity: 0.6,
+    marginTop: 12,
+    textAlign: "center",
+  },
+  emptyActivitySubtext: {
+    fontSize: 14,
+    opacity: 0.5,
+    marginTop: 4,
+    textAlign: "center",
   },
 });

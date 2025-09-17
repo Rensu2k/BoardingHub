@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useState } from "react";
 import {
   Alert,
   Dimensions,
@@ -17,6 +17,15 @@ import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import { Colors } from "@/constants/Colors";
 import { useColorScheme } from "@/hooks/useColorScheme";
+import {
+  assignTenantToRoom,
+  checkOutTenant,
+  filterTenantsByStatus,
+  getAllRegisteredTenants,
+  getTenantStatistics,
+  searchTenants,
+  updateTenantStatus,
+} from "@/utils/tenantHelpers";
 
 const { width } = Dimensions.get("window");
 
@@ -24,17 +33,32 @@ export default function TenantsScreen() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [refreshing, setRefreshing] = useState(false);
+  const [allTenants, setAllTenants] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   const router = useRouter();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
 
+  // Load tenants data
+  const loadTenants = async () => {
+    try {
+      setLoading(true);
+      const tenants = await getAllRegisteredTenants();
+      setAllTenants(tenants);
+    } catch (error) {
+      console.error("Error loading tenants:", error);
+      Alert.alert("Error", "Failed to load tenants. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Refresh function to reload tenants data
   const onRefresh = async () => {
     setRefreshing(true);
     try {
-      // Simulate fetching fresh data
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await loadTenants();
     } catch (error) {
       console.error("Error refreshing tenants:", error);
     } finally {
@@ -42,89 +66,27 @@ export default function TenantsScreen() {
     }
   };
 
-  // Mock data - replace with Firebase data later
-  const allTenants = [
-    {
-      id: "1",
-      name: "Anna Garcia",
-      roomNumber: "101",
-      phone: "+63 912 345 6789",
-      avatar: null,
-      status: "active",
-      balance: 0,
-      leaseStart: "2024-01-15",
-      leaseEnd: "2024-12-15",
-    },
-    {
-      id: "2",
-      name: "Carlos Mendoza",
-      roomNumber: "102",
-      phone: "+63 917 654 3210",
-      avatar: null,
-      status: "overdue",
-      balance: 2800,
-      leaseStart: "2023-06-01",
-      leaseEnd: "2024-06-01",
-    },
-    {
-      id: "3",
-      name: "Elena Rodriguez",
-      roomNumber: "103",
-      phone: "+63 918 123 4567",
-      avatar: null,
-      status: "active",
-      balance: 0,
-      leaseStart: "2024-02-01",
-      leaseEnd: "2025-02-01",
-    },
-    {
-      id: "4",
-      name: "Jose Santos",
-      roomNumber: "201",
-      phone: "+63 919 876 5432",
-      avatar: null,
-      status: "moving-out",
-      balance: 1400,
-      leaseStart: "2023-08-15",
-      leaseEnd: "2024-08-15",
-    },
-    {
-      id: "5",
-      name: "Maria Fernandez",
-      roomNumber: "202",
-      phone: "+63 920 111 2233",
-      avatar: null,
-      status: "active",
-      balance: 0,
-      leaseStart: "2024-03-01",
-      leaseEnd: "2025-03-01",
-    },
-  ];
+  // Load tenants when screen focuses
+  useFocusEffect(
+    useCallback(() => {
+      loadTenants();
+    }, [])
+  );
 
   // Filter and sort tenants
-  const filteredTenants = allTenants
-    .filter((tenant) => {
-      const matchesSearch =
-        tenant.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        tenant.roomNumber.includes(searchQuery) ||
-        tenant.phone.includes(searchQuery);
-      const matchesStatus =
-        statusFilter === "All" ||
-        (statusFilter === "Active" && tenant.status === "active") ||
-        (statusFilter === "Overdue" && tenant.status === "overdue") ||
-        (statusFilter === "Moving Out" && tenant.status === "moving-out");
-      return matchesSearch && matchesStatus;
-    })
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const searchedTenants = searchTenants(allTenants, searchQuery);
+  const filteredTenants = filterTenantsByStatus(searchedTenants, statusFilter);
+  const statistics = getTenantStatistics(allTenants);
 
   const statusCounts = {
-    all: allTenants.length,
-    active: allTenants.filter((t) => t.status === "active").length,
-    overdue: allTenants.filter((t) => t.status === "overdue").length,
-    movingOut: allTenants.filter((t) => t.status === "moving-out").length,
+    all: statistics.total,
+    active: statistics.active,
+    overdue: statistics.overdue,
+    movingOut: statistics.movingOut,
+    registered: statistics.registered,
   };
 
-  const handleTenantAction = (tenant, action) => {
+  const handleTenantAction = async (tenant, action) => {
     switch (action) {
       case "message":
         Alert.alert("Message Tenant", `Send message to ${tenant.name}?`);
@@ -136,7 +98,58 @@ export default function TenantsScreen() {
         );
         break;
       case "checkout":
-        Alert.alert("Check-out", `Process check-out for ${tenant.name}?`);
+        Alert.alert("Check-out", `Process check-out for ${tenant.name}?`, [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Check-out",
+            style: "destructive",
+            onPress: async () => {
+              try {
+                await checkOutTenant(tenant.id);
+                await loadTenants(); // Refresh the list
+                Alert.alert("Success", `${tenant.name} has been checked out and room status updated.`);
+              } catch (error) {
+                console.error("Checkout error:", error);
+                Alert.alert("Error", "Failed to check out tenant.");
+              }
+            },
+          },
+        ]);
+        break;
+      case "assign":
+        // Show room assignment dialog
+        Alert.prompt(
+          "Assign Room",
+          `Assign ${tenant.name} to room:`,
+          [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Assign",
+              onPress: async (roomNumber) => {
+                if (roomNumber && roomNumber.trim()) {
+                  try {
+                    await assignTenantToRoom(tenant.id, roomNumber.trim(), {
+                      leaseStart: new Date().toISOString(),
+                      leaseEnd: new Date(
+                        Date.now() + 365 * 24 * 60 * 60 * 1000
+                      ).toISOString(), // 1 year lease
+                    });
+                    await loadTenants(); // Refresh the list
+                    Alert.alert(
+                      "Success",
+                      `${tenant.name} has been assigned to room ${roomNumber}.`
+                    );
+                  } catch (error) {
+                    Alert.alert("Error", "Failed to assign tenant to room.");
+                  }
+                }
+              },
+            },
+          ],
+          "plain-text",
+          "",
+          "numeric"
+        );
         break;
     }
   };
@@ -155,42 +168,91 @@ export default function TenantsScreen() {
         <ThemedText style={styles.tenantName}>{tenant.name}</ThemedText>
         <View style={styles.tenantDetails}>
           <ThemedText style={styles.roomNumber}>
-            Room {tenant.roomNumber}
+            {tenant.roomNumber
+              ? `Room ${tenant.roomNumber}`
+              : "No room assigned"}
           </ThemedText>
           <ThemedText style={styles.phoneNumber}>{tenant.phone}</ThemedText>
         </View>
+        {tenant.preferredRoomType && (
+          <ThemedText style={styles.preferredRoom}>
+            Prefers: {tenant.preferredRoomType}
+          </ThemedText>
+        )}
       </View>
 
       <View style={styles.tenantActions}>
+        {/* Status Chip */}
         <View
           style={[
-            styles.balanceChip,
+            styles.statusChip,
             {
               backgroundColor:
-                tenant.balance === 0
+                tenant.status === "registered"
+                  ? "#007AFF20"
+                  : tenant.status === "active"
                   ? "#34C75920"
-                  : tenant.balance > 0
+                  : tenant.status === "overdue"
                   ? "#FF950020"
-                  : "#FF3B3020",
+                  : tenant.status === "moving-out"
+                  ? "#FF3B3020"
+                  : "#8E8E9320",
             },
           ]}
         >
           <ThemedText
             style={[
-              styles.balanceText,
+              styles.statusText,
               {
                 color:
-                  tenant.balance === 0
+                  tenant.status === "registered"
+                    ? "#007AFF"
+                    : tenant.status === "active"
                     ? "#34C759"
-                    : tenant.balance > 0
+                    : tenant.status === "overdue"
                     ? "#FF9500"
-                    : "#FF3B30",
+                    : tenant.status === "moving-out"
+                    ? "#FF3B30"
+                    : "#8E8E93",
               },
             ]}
           >
-            ₱{tenant.balance.toLocaleString()}
+            {tenant.status.charAt(0).toUpperCase() + tenant.status.slice(1)}
           </ThemedText>
         </View>
+
+        {/* Balance (only show if assigned to room) */}
+        {tenant.roomNumber && (
+          <View
+            style={[
+              styles.balanceChip,
+              {
+                backgroundColor:
+                  tenant.balance === 0
+                    ? "#34C75920"
+                    : tenant.balance > 0
+                    ? "#FF950020"
+                    : "#FF3B3020",
+              },
+            ]}
+          >
+            <ThemedText
+              style={[
+                styles.balanceText,
+                {
+                  color:
+                    tenant.balance === 0
+                      ? "#34C759"
+                      : tenant.balance > 0
+                      ? "#FF9500"
+                      : "#FF3B30",
+                },
+              ]}
+            >
+              ₱{tenant.balance.toLocaleString()}
+            </ThemedText>
+          </View>
+        )}
 
         <View style={styles.quickActions}>
           <TouchableOpacity
@@ -200,19 +262,39 @@ export default function TenantsScreen() {
             <Ionicons name="chatbubble-outline" size={16} color="#007AFF" />
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.quickActionButton, { backgroundColor: "#34C75920" }]}
-            onPress={() => handleTenantAction(tenant, "payments")}
-          >
-            <Ionicons name="card-outline" size={16} color="#34C759" />
-          </TouchableOpacity>
+          {tenant.status === "registered" ? (
+            <TouchableOpacity
+              style={[
+                styles.quickActionButton,
+                { backgroundColor: "#34C75920" },
+              ]}
+              onPress={() => handleTenantAction(tenant, "assign")}
+            >
+              <Ionicons name="home-outline" size={16} color="#34C759" />
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={[
+                styles.quickActionButton,
+                { backgroundColor: "#34C75920" },
+              ]}
+              onPress={() => handleTenantAction(tenant, "payments")}
+            >
+              <Ionicons name="card-outline" size={16} color="#34C759" />
+            </TouchableOpacity>
+          )}
 
-          <TouchableOpacity
-            style={[styles.quickActionButton, { backgroundColor: "#FF950020" }]}
-            onPress={() => handleTenantAction(tenant, "checkout")}
-          >
-            <Ionicons name="log-out-outline" size={16} color="#FF9500" />
-          </TouchableOpacity>
+          {tenant.status === "active" && (
+            <TouchableOpacity
+              style={[
+                styles.quickActionButton,
+                { backgroundColor: "#FF950020" },
+              ]}
+              onPress={() => handleTenantAction(tenant, "checkout")}
+            >
+              <Ionicons name="log-out-outline" size={16} color="#FF9500" />
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     </TouchableOpacity>
@@ -284,6 +366,11 @@ export default function TenantsScreen() {
         <View style={styles.filterTabs}>
           {[
             { key: "All", label: "All", count: statusCounts.all },
+            {
+              key: "Registered",
+              label: "Registered",
+              count: statusCounts.registered,
+            },
             { key: "Active", label: "Active", count: statusCounts.active },
             { key: "Overdue", label: "Overdue", count: statusCounts.overdue },
             {
@@ -342,15 +429,6 @@ export default function TenantsScreen() {
         </ThemedView>
       </ScrollView>
 
-      {/* FAB */}
-      <TouchableOpacity
-        style={[styles.fab, { backgroundColor: colors.tint }]}
-        onPress={() =>
-          Alert.alert("Coming Soon", "Add Tenant flow coming soon!")
-        }
-      >
-        <Ionicons name="add" size={24} color="white" />
-      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -396,7 +474,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 100,
+    paddingBottom: 20,
   },
   filterTabs: {
     flexDirection: "row",
@@ -483,6 +561,23 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "500",
   },
+  statusChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    marginBottom: 4,
+  },
+  statusText: {
+    fontSize: 10,
+    fontWeight: "600",
+    textTransform: "uppercase",
+  },
+  preferredRoom: {
+    fontSize: 12,
+    opacity: 0.7,
+    fontStyle: "italic",
+    marginTop: 2,
+  },
   emptyState: {
     alignItems: "center",
     justifyContent: "center",
@@ -493,20 +588,5 @@ const styles = StyleSheet.create({
     opacity: 0.6,
     marginTop: 12,
     textAlign: "center",
-  },
-  fab: {
-    position: "absolute",
-    bottom: 80,
-    right: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
   },
 });

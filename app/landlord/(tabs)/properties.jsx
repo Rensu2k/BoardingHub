@@ -1,9 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useState } from "react";
 import {
   Alert,
   Dimensions,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
@@ -15,45 +16,103 @@ import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import { Colors } from "@/constants/Colors";
 import { useColorScheme } from "@/hooks/useColorScheme";
+import { deleteProperty, getUserProperties } from "@/utils/propertyHelpers";
 
 const { width } = Dimensions.get("window");
 
 export default function PropertiesScreen() {
   const [refreshing, setRefreshing] = useState(false);
+  const [properties, setProperties] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [activeFilter, setActiveFilter] = useState("All");
   const router = useRouter();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
 
-  // Mock data - replace with Firebase data later
-  const properties = [
-    {
-      id: "1",
-      name: "Sunset Apartments",
-      address: "123 Main St, Cebu City",
-      image: null, // Will use placeholder
-      vacancies: 2,
-      totalRooms: 15,
-      occupied: 13,
-    },
-    {
-      id: "2",
-      name: "Garden Villas",
-      address: "456 Oak Ave, Mandaue",
-      image: null,
-      vacancies: 0,
-      totalRooms: 8,
-      occupied: 8,
-    },
-    {
-      id: "3",
-      name: "City Center Rooms",
-      address: "789 Pine St, Cebu City",
-      image: null,
-      vacancies: 5,
-      totalRooms: 12,
-      occupied: 7,
-    },
-  ];
+  const loadProperties = async () => {
+    try {
+      setLoading(true);
+      const userProperties = await getUserProperties();
+      setProperties(userProperties);
+    } catch (error) {
+      console.error("Error loading properties:", error);
+      Alert.alert("Error", "Failed to load properties. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadProperties();
+    setRefreshing(false);
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      loadProperties();
+    }, [])
+  );
+
+  const handleDeleteProperty = async (propertyId, propertyName, property) => {
+    // Check if property has occupied rooms before showing delete confirmation
+    if (property.occupied > 0) {
+      Alert.alert(
+        "Cannot Delete Property",
+        `"${propertyName}" cannot be deleted because it has ${property.occupied} occupied room(s). Please move out all tenants before deleting the property.`,
+        [{ text: "OK" }]
+      );
+      return;
+    }
+
+    Alert.alert(
+      "Delete Property",
+      `Are you sure you want to delete "${propertyName}"?\n\nThis will also delete all ${
+        property.totalRooms || 0
+      } room(s) in this property.\n\nThis action cannot be undone.`,
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteProperty(propertyId);
+              await loadProperties(); // Refresh the list
+              Alert.alert("Success", "Property deleted successfully");
+            } catch (error) {
+              console.error("Error deleting property:", error);
+
+              // Show specific error message for better user experience
+              const errorMessage = error.message.includes("occupied")
+                ? error.message
+                : "Failed to delete property. Please try again.";
+
+              Alert.alert("Error", errorMessage);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const getFilteredProperties = () => {
+    switch (activeFilter) {
+      case "Active":
+        return properties.filter((p) => p.status === "active");
+      case "Full":
+        return properties.filter((p) => p.vacancies === 0);
+      case "Vacancies":
+        return properties.filter((p) => p.vacancies > 0);
+      default:
+        return properties;
+    }
+  };
+
+  const filteredProperties = getFilteredProperties();
 
   const PropertyCard = ({ property }) => (
     <TouchableOpacity
@@ -92,7 +151,23 @@ export default function PropertiesScreen() {
       <TouchableOpacity
         style={styles.overflowMenu}
         onPress={() =>
-          Alert.alert("Actions", "Edit/Delete actions coming soon!")
+          Alert.alert("Property Actions", "Choose an action", [
+            {
+              text: "Edit",
+              onPress: () =>
+                router.push(`/landlord/edit-property/${property.id}`),
+            },
+            {
+              text: "Delete",
+              style: "destructive",
+              onPress: () =>
+                handleDeleteProperty(property.id, property.name, property),
+            },
+            {
+              text: "Cancel",
+              style: "cancel",
+            },
+          ])
         }
       >
         <Ionicons name="ellipsis-vertical" size={20} color={colors.text} />
@@ -150,6 +225,9 @@ export default function PropertiesScreen() {
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
       >
         {/* Filter Tabs */}
         <View style={styles.filterTabs}>
@@ -159,14 +237,16 @@ export default function PropertiesScreen() {
               style={[
                 styles.filterTab,
                 {
-                  backgroundColor: filter === "All" ? colors.tint : colors.card,
+                  backgroundColor:
+                    filter === activeFilter ? colors.tint : colors.card,
                 },
               ]}
+              onPress={() => setActiveFilter(filter)}
             >
               <ThemedText
                 style={[
                   styles.filterTabText,
-                  { color: filter === "All" ? "white" : colors.text },
+                  { color: filter === activeFilter ? "white" : colors.text },
                 ]}
               >
                 {filter}
@@ -177,20 +257,52 @@ export default function PropertiesScreen() {
 
         {/* Properties List */}
         <ThemedView style={styles.propertiesSection}>
-          <View style={styles.propertiesList}>
-            {properties.map((property) => (
-              <PropertyCard key={property.id} property={property} />
-            ))}
-          </View>
+          {loading ? (
+            <View style={styles.loadingContainer}>
+              <ThemedText style={styles.loadingText}>
+                Loading properties...
+              </ThemedText>
+            </View>
+          ) : filteredProperties.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Ionicons
+                name="business-outline"
+                size={64}
+                color={colors.text + "40"}
+              />
+              <ThemedText style={styles.emptyTitle}>
+                No Properties Found
+              </ThemedText>
+              <ThemedText style={styles.emptySubtitle}>
+                {properties.length === 0
+                  ? "Add your first property to get started"
+                  : "No properties match the selected filter"}
+              </ThemedText>
+              {properties.length === 0 && (
+                <TouchableOpacity
+                  style={[styles.addButton, { backgroundColor: colors.tint }]}
+                  onPress={() => router.push("/landlord/add-property")}
+                >
+                  <ThemedText style={styles.addButtonText}>
+                    Add Property
+                  </ThemedText>
+                </TouchableOpacity>
+              )}
+            </View>
+          ) : (
+            <View style={styles.propertiesList}>
+              {filteredProperties.map((property) => (
+                <PropertyCard key={property.id} property={property} />
+              ))}
+            </View>
+          )}
         </ThemedView>
       </ScrollView>
 
       {/* FAB */}
       <TouchableOpacity
         style={[styles.fab, { backgroundColor: colors.tint }]}
-        onPress={() =>
-          Alert.alert("Coming Soon", "Add Property flow coming soon!")
-        }
+        onPress={() => router.push("/landlord/add-property")}
       >
         <Ionicons name="add" size={24} color="white" />
       </TouchableOpacity>
@@ -340,5 +452,42 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 6,
+  },
+  loadingContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 40,
+  },
+  loadingText: {
+    fontSize: 16,
+    opacity: 0.7,
+  },
+  emptyContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 60,
+    paddingHorizontal: 40,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: "600",
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptySubtitle: {
+    fontSize: 16,
+    opacity: 0.7,
+    textAlign: "center",
+    marginBottom: 24,
+  },
+  addButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  addButtonText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "600",
   },
 });

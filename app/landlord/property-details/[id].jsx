@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { useState } from "react";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
   Dimensions,
@@ -13,87 +13,159 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import StatusChip from "@/components/landlord/StatusChip";
+import TenantAssignmentModal from "@/components/landlord/TenantAssignmentModal";
 import { ThemedText } from "@/components/ThemedText";
 import { Colors } from "@/constants/Colors";
 import { useColorScheme } from "@/hooks/useColorScheme";
+import { getPropertyById } from "@/utils/propertyHelpers";
+import { getPropertyRooms } from "@/utils/roomHelpers";
+import { forceCheckoutTenantFromRoom } from "@/utils/tenantHelpers";
 
 const { width, height } = Dimensions.get("window");
 
 export default function PropertyDetailsScreen() {
   const [selectedRooms, setSelectedRooms] = useState([]);
   const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [property, setProperty] = useState(null);
+  const [rooms, setRooms] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [showAssignmentModal, setShowAssignmentModal] = useState(false);
+  const [selectedRoom, setSelectedRoom] = useState(null);
+  const scrollViewRef = useRef(null);
   const router = useRouter();
   const { id } = useLocalSearchParams();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
 
-  // Mock property data - replace with Firebase data later
-  const property = {
-    id: id,
-    name: "Sunset Apartments",
-    address: "123 Main St, Cebu City",
-    images: [
-      "https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=400",
-      "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=400",
-      "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=400",
-    ],
-    totalRooms: 15,
-    occupied: 13,
-    vacant: 2,
-    monthlyRevenue: 15750,
-    rooms: [
-      {
-        id: "1",
-        number: "101",
-        rent: 2800,
-        status: "occupied",
-        tenant: "John Doe",
-        thumbnail:
-          "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=200",
+  // Auto-slide images every 3 seconds
+  useEffect(() => {
+    if (!property?.photos || property.photos.length <= 1) return;
+
+    const interval = setInterval(() => {
+      setCurrentImageIndex((prevIndex) => {
+        const nextIndex = (prevIndex + 1) % property.photos.length;
+        
+        // Scroll to the next image
+        if (scrollViewRef.current) {
+          scrollViewRef.current.scrollTo({
+            x: nextIndex * width,
+            animated: true,
+          });
+        }
+        
+        return nextIndex;
+      });
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [property?.photos, width]);
+
+  // Load property and room data from Firebase
+  const loadPropertyData = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      
+      // Fetch property details
+      const propertyData = await getPropertyById(id);
+      console.log('Property data loaded:', propertyData);
+      console.log('Property photos:', propertyData?.photos);
+      setProperty(propertyData);
+      
+      // Fetch rooms for this property
+      const roomsData = await getPropertyRooms(id);
+      setRooms(roomsData);
+      
+    } catch (error) {
+      console.error("Error loading property data:", error);
+      Alert.alert("Error", "Failed to load property data. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadPropertyData();
+    }, [loadPropertyData])
+  );
+
+  // Calculate statistics from actual room data
+  const calculateStats = () => {
+    if (!rooms.length) {
+      return { totalRooms: 0, occupied: 0, vacant: 0, maintenance: 0, monthlyRevenue: 0 };
+    }
+
+    const stats = rooms.reduce(
+      (acc, room) => {
+        acc.totalRooms++;
+        if (room.status === "occupied") {
+          acc.occupied++;
+          acc.monthlyRevenue += room.rent || 0;
+        } else if (room.status === "vacant") {
+          acc.vacant++;
+        } else if (room.status === "maintenance") {
+          acc.maintenance++;
+        }
+        return acc;
       },
-      {
-        id: "2",
-        number: "102",
-        rent: 2800,
-        status: "occupied",
-        tenant: "Jane Smith",
-        thumbnail:
-          "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=200",
-      },
-      {
-        id: "3",
-        number: "103",
-        rent: 2800,
-        status: "vacant",
-        tenant: null,
-        thumbnail:
-          "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=200",
-      },
-      {
-        id: "4",
-        number: "104",
-        rent: 2800,
-        status: "maintenance",
-        tenant: null,
-        thumbnail:
-          "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=200",
-      },
-      {
-        id: "5",
-        number: "105",
-        rent: 2800,
-        status: "occupied",
-        tenant: "Mike Johnson",
-        thumbnail:
-          "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=200",
-      },
-    ],
+      { totalRooms: 0, occupied: 0, vacant: 0, maintenance: 0, monthlyRevenue: 0 }
+    );
+
+    return stats;
   };
+
+  const stats = calculateStats();
+
+  if (isLoading) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={styles.loadingContainer}>
+          <ThemedText style={styles.loadingText}>Loading property details...</ThemedText>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!property) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={styles.errorContainer}>
+          <ThemedText style={styles.errorText}>Property not found</ThemedText>
+          <TouchableOpacity 
+            style={[styles.retryButton, { backgroundColor: colors.tint }]}
+            onPress={loadPropertyData}
+          >
+            <ThemedText style={styles.retryButtonText}>Retry</ThemedText>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   const handleRoomAction = (room, action) => {
     switch (action) {
       case "assign":
-        Alert.alert("Assign Tenant", `Assign tenant to Room ${room.number}?`);
+        if (room.status === "occupied") {
+          Alert.alert(
+            "Room Occupied", 
+            `Room ${room.number} is currently occupied by ${room.tenant?.name || 'a tenant'}. Would you like to reassign it?`,
+            [
+              { text: "Cancel", style: "cancel" },
+              { 
+                text: "Reassign", 
+                style: "destructive",
+                onPress: () => {
+                  setSelectedRoom(room);
+                  setShowAssignmentModal(true);
+                }
+              }
+            ]
+          );
+        } else {
+          setSelectedRoom(room);
+          setShowAssignmentModal(true);
+        }
         break;
       case "bill":
         Alert.alert("Generate Bill", `Generate bill for Room ${room.number}?`);
@@ -155,13 +227,20 @@ export default function PropertyDetailsScreen() {
 
         <View style={styles.roomContent}>
           <Image
-            source={{ uri: room.thumbnail }}
+            source={{ 
+              uri: room.photos && room.photos.length > 0 
+                ? room.photos[0] 
+                : "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=200"
+            }}
             style={styles.roomThumbnail}
           />
 
           <View style={styles.roomDetails}>
+            <ThemedText style={styles.roomType}>{room.type || "Studio"}</ThemedText>
             {room.tenant && (
-              <ThemedText style={styles.tenantName}>{room.tenant}</ThemedText>
+              <ThemedText style={styles.tenantName}>
+                {typeof room.tenant === 'string' ? room.tenant : room.tenant.name}
+              </ThemedText>
             )}
 
             {!isSelectionMode && (
@@ -175,7 +254,7 @@ export default function PropertyDetailsScreen() {
                 >
                   <Ionicons
                     name="person-add-outline"
-                    size={16}
+                    size={20}
                     color="#007AFF"
                   />
                 </TouchableOpacity>
@@ -187,7 +266,7 @@ export default function PropertyDetailsScreen() {
                   ]}
                   onPress={() => handleRoomAction(room, "bill")}
                 >
-                  <Ionicons name="cash-outline" size={16} color="#34C759" />
+                  <Ionicons name="cash-outline" size={20} color="#34C759" />
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -199,10 +278,11 @@ export default function PropertyDetailsScreen() {
                 >
                   <Ionicons
                     name="construct-outline"
-                    size={16}
+                    size={20}
                     color="#FFCC00"
                   />
                 </TouchableOpacity>
+
               </View>
             )}
           </View>
@@ -244,9 +324,7 @@ export default function PropertyDetailsScreen() {
 
         <TouchableOpacity
           style={styles.editButton}
-          onPress={() =>
-            Alert.alert("Edit Property", "Edit functionality coming soon!")
-          }
+          onPress={() => router.push(`/landlord/edit-property/${property.id}`)}
         >
           <Ionicons name="pencil" size={20} color={colors.text} />
         </TouchableOpacity>
@@ -257,13 +335,60 @@ export default function PropertyDetailsScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* Hero Image */}
+        {/* Hero Image Carousel */}
         <View style={styles.heroContainer}>
-          <Image
-            source={{ uri: property.images[0] }}
-            style={styles.heroImage}
-            resizeMode="cover"
-          />
+          {property.photos && property.photos.length > 0 ? (
+            <>
+              <ScrollView
+                ref={scrollViewRef}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                onMomentumScrollEnd={(event) => {
+                  const newIndex = Math.round(event.nativeEvent.contentOffset.x / width);
+                  setCurrentImageIndex(newIndex);
+                }}
+                style={styles.imageCarousel}
+                contentContainerStyle={{ flexDirection: 'row' }}
+              >
+                {property.photos.map((photo, index) => (
+                  <View key={index} style={styles.imageContainer}>
+                    <Image
+                      source={{ uri: photo }}
+                      style={styles.heroImage}
+                      resizeMode="cover"
+                      onError={(error) => console.log('Image load error:', error)}
+                      onLoad={() => console.log('Image loaded successfully:', photo)}
+                    />
+                  </View>
+                ))}
+              </ScrollView>
+              
+              {/* Image Indicators */}
+              {property.photos.length > 1 && (
+                <View style={styles.imageIndicators}>
+                  {property.photos.map((_, index) => (
+                    <View
+                      key={index}
+                      style={[
+                        styles.indicator,
+                        {
+                          backgroundColor: index === currentImageIndex ? 'white' : 'rgba(255,255,255,0.5)',
+                        },
+                      ]}
+                    />
+                  ))}
+                </View>
+              )}
+            </>
+          ) : (
+            <Image
+              source={{ uri: "https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=400" }}
+              style={styles.heroImage}
+              resizeMode="cover"
+            />
+          )}
+          
           <View style={styles.heroOverlay}>
             <ThemedText style={styles.heroTitle}>{property.name}</ThemedText>
             <ThemedText style={styles.heroAddress}>
@@ -276,7 +401,7 @@ export default function PropertyDetailsScreen() {
         <View style={styles.statsContainer}>
           <View style={[styles.statChip, { backgroundColor: "#007AFF20" }]}>
             <ThemedText style={[styles.statNumber, { color: "#007AFF" }]}>
-              {property.totalRooms}
+              {stats.totalRooms}
             </ThemedText>
             <ThemedText style={[styles.statLabel, { color: "#007AFF" }]}>
               Total Rooms
@@ -285,7 +410,7 @@ export default function PropertyDetailsScreen() {
 
           <View style={[styles.statChip, { backgroundColor: "#34C75920" }]}>
             <ThemedText style={[styles.statNumber, { color: "#34C759" }]}>
-              {property.occupied}
+              {stats.occupied}
             </ThemedText>
             <ThemedText style={[styles.statLabel, { color: "#34C759" }]}>
               Occupied
@@ -294,7 +419,7 @@ export default function PropertyDetailsScreen() {
 
           <View style={[styles.statChip, { backgroundColor: "#FF950020" }]}>
             <ThemedText style={[styles.statNumber, { color: "#FF9500" }]}>
-              {property.vacant}
+              {stats.vacant}
             </ThemedText>
             <ThemedText style={[styles.statLabel, { color: "#FF9500" }]}>
               Vacant
@@ -303,7 +428,7 @@ export default function PropertyDetailsScreen() {
 
           <View style={[styles.statChip, { backgroundColor: "#FFCC0020" }]}>
             <ThemedText style={[styles.statNumber, { color: "#FFCC00" }]}>
-              ₱{property.monthlyRevenue.toLocaleString()}
+              ₱{stats.monthlyRevenue.toLocaleString()}
             </ThemedText>
             <ThemedText style={[styles.statLabel, { color: "#FFCC00" }]}>
               Monthly Revenue
@@ -362,12 +487,39 @@ export default function PropertyDetailsScreen() {
             </TouchableOpacity>
           </View>
           <View style={styles.roomsList}>
-            {property.rooms.map((room) => (
-              <RoomCard key={room.id} room={room} />
-            ))}
+            {rooms.length > 0 ? (
+              rooms.map((room) => (
+                <RoomCard key={room.id} room={room} />
+              ))
+            ) : (
+              <View style={styles.emptyState}>
+                <Ionicons name="home-outline" size={48} color={colors.text} opacity={0.3} />
+                <ThemedText style={styles.emptyStateText}>No rooms added yet</ThemedText>
+                <TouchableOpacity
+                  style={[styles.addRoomButton, { backgroundColor: colors.tint }]}
+                  onPress={() => router.push(`/landlord/rooms-management/${property.id}`)}
+                >
+                  <ThemedText style={styles.addRoomButtonText}>Add Rooms</ThemedText>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         </View>
       </ScrollView>
+
+      {/* Tenant Assignment Modal */}
+      <TenantAssignmentModal
+        visible={showAssignmentModal}
+        onClose={() => {
+          setShowAssignmentModal(false);
+          setSelectedRoom(null);
+        }}
+        room={selectedRoom}
+        onAssignmentComplete={() => {
+          // Reload property data to reflect changes
+          loadPropertyData();
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -396,12 +548,12 @@ const styles = StyleSheet.create({
     paddingBottom: 100,
   },
   heroContainer: {
-    height: height * 0.3,
+    height: 250,
     position: "relative",
   },
   heroImage: {
-    width: "100%",
-    height: "100%",
+    width: width,
+    height: 250,
   },
   heroOverlay: {
     position: "absolute",
@@ -492,11 +644,11 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   roomsList: {
-    gap: 12,
+    gap: 8,
   },
   roomCard: {
     borderRadius: 12,
-    padding: 16,
+    padding: 12,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -508,7 +660,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 12,
+    marginBottom: 8,
   },
   roomInfo: {
     flex: 1,
@@ -531,7 +683,7 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 8,
-    marginRight: 16,
+    marginRight: 12,
   },
   roomDetails: {
     flex: 1,
@@ -544,11 +696,12 @@ const styles = StyleSheet.create({
   quickActions: {
     flexDirection: "row",
     gap: 8,
+    justifyContent: "flex-end",
   },
   actionButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -565,5 +718,84 @@ const styles = StyleSheet.create({
     borderColor: "#C7C7CC",
     alignItems: "center",
     justifyContent: "center",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 40,
+  },
+  loadingText: {
+    fontSize: 16,
+    opacity: 0.7,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 40,
+  },
+  errorText: {
+    fontSize: 18,
+    textAlign: "center",
+    marginBottom: 20,
+    opacity: 0.7,
+  },
+  retryButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  emptyState: {
+    alignItems: "center",
+    paddingVertical: 40,
+  },
+  emptyStateText: {
+    fontSize: 16,
+    opacity: 0.7,
+    marginTop: 16,
+    marginBottom: 20,
+  },
+  addRoomButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  addRoomButtonText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  roomType: {
+    fontSize: 14,
+    opacity: 0.8,
+    marginBottom: 4,
+  },
+  imageCarousel: {
+    height: 250,
+  },
+  imageContainer: {
+    width: width,
+    height: 250,
+  },
+  imageIndicators: {
+    position: "absolute",
+    bottom: 16,
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 8,
+  },
+  indicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
 });

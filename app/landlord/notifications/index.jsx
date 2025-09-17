@@ -1,77 +1,54 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useState } from "react";
 import { FlatList, StyleSheet, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ThemedText } from "@/components/ThemedText";
+import TenantApplicationModal from "@/components/landlord/TenantApplicationModal";
 import { Colors } from "@/constants/Colors";
 import { useColorScheme } from "@/hooks/useColorScheme";
+import {
+  getLandlordNotifications,
+  markNotificationAsRead,
+} from "@/utils/notificationHelpers";
 
 export default function NotificationsScreen() {
   const [selectedFilter, setSelectedFilter] = useState("all");
+  const [notifications, setNotifications] = useState([]);
+  const [showApplicationModal, setShowApplicationModal] = useState(false);
+  const [selectedApplication, setSelectedApplication] = useState(null);
+  const [loading, setLoading] = useState(true);
   const router = useRouter();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
 
-  // Mock notifications data
-  const notifications = [
-    {
-      id: "1",
-      type: "due",
-      title: "Rent Due Reminder",
-      message: "Rent payment due in 3 days for Room 101",
-      tenantName: "Juan Dela Cruz",
-      property: "Sunset Apartments",
-      roomNumber: "101",
-      timestamp: "2024-01-15T10:00:00Z",
-      isRead: false,
-      contextType: "invoice",
-      contextId: "INV-2024-001",
-    },
-    {
-      id: "2",
-      type: "payment",
-      title: "Payment Received",
-      message: "Payment proof uploaded by Maria Santos",
-      tenantName: "Maria Santos",
-      property: "Sunset Apartments",
-      roomNumber: "205",
-      timestamp: "2024-01-15T08:30:00Z",
-      isRead: false,
-      contextType: "proof",
-      contextId: "PROOF-001",
-    },
-    {
-      id: "3",
-      type: "system",
-      title: "Maintenance Request",
-      message: "New maintenance request for Room 305",
-      tenantName: "Pedro Reyes",
-      property: "Sunset Apartments",
-      roomNumber: "305",
-      timestamp: "2024-01-14T16:45:00Z",
-      isRead: true,
-      contextType: "maintenance",
-      contextId: "MAINT-001",
-    },
-    {
-      id: "4",
-      type: "due",
-      title: "Overdue Payment",
-      message: "Payment overdue for Room 102",
-      tenantName: "Ana Garcia",
-      property: "Sunset Apartments",
-      roomNumber: "102",
-      timestamp: "2024-01-13T12:00:00Z",
-      isRead: true,
-      contextType: "invoice",
-      contextId: "INV-2024-002",
-    },
-  ];
+  // Load notifications when screen is focused
+  useFocusEffect(
+    useCallback(() => {
+      loadNotifications();
+    }, [])
+  );
+
+  const loadNotifications = async () => {
+    try {
+      setLoading(true);
+      const landlordNotifications = await getLandlordNotifications();
+      setNotifications(landlordNotifications);
+    } catch (error) {
+      console.error("Error loading notifications:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const filterOptions = [
     { key: "all", label: "All", count: notifications.length },
+    {
+      key: "application",
+      label: "Applications",
+      count: notifications.filter((n) => n.type === "application").length,
+    },
     {
       key: "due",
       label: "Due",
@@ -96,6 +73,8 @@ export default function NotificationsScreen() {
 
   const getNotificationIcon = (type) => {
     switch (type) {
+      case "application":
+        return "person-add";
       case "due":
         return "alert-circle";
       case "payment":
@@ -109,6 +88,8 @@ export default function NotificationsScreen() {
 
   const getNotificationColor = (type) => {
     switch (type) {
+      case "application":
+        return "#FF9500";
       case "due":
         return "#FF3B30";
       case "payment":
@@ -120,9 +101,23 @@ export default function NotificationsScreen() {
     }
   };
 
-  const handleNotificationPress = (notification) => {
+  const handleNotificationPress = async (notification) => {
+    // Mark notification as read
+    if (!notification.isRead) {
+      await markNotificationAsRead(notification.id);
+      loadNotifications(); // Refresh the list
+    }
+
     // Navigate to appropriate context based on notification type
     switch (notification.contextType) {
+      case "application":
+        // Show application details modal
+        setSelectedApplication({
+          ...notification.applicationData,
+          notificationId: notification.id,
+        });
+        setShowApplicationModal(true);
+        break;
       case "invoice":
         router.push(`/landlord/billing/invoice/${notification.contextId}`);
         break;
@@ -136,6 +131,11 @@ export default function NotificationsScreen() {
         // Stay on notifications screen
         break;
     }
+  };
+
+  const handleApplicationStatusUpdate = (newStatus) => {
+    // Refresh notifications to show updated status
+    loadNotifications();
   };
 
   const renderFilterChip = ({ item }) => (
@@ -251,6 +251,8 @@ export default function NotificationsScreen() {
         keyExtractor={(item) => item.id}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.notificationsList}
+        refreshing={loading}
+        onRefresh={loadNotifications}
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <Ionicons
@@ -266,6 +268,18 @@ export default function NotificationsScreen() {
             </ThemedText>
           </View>
         }
+      />
+
+      {/* Application Details Modal */}
+      <TenantApplicationModal
+        visible={showApplicationModal}
+        onClose={() => {
+          setShowApplicationModal(false);
+          setSelectedApplication(null);
+        }}
+        applicationData={selectedApplication}
+        notificationId={selectedApplication?.notificationId}
+        onStatusUpdate={handleApplicationStatusUpdate}
       />
     </SafeAreaView>
   );
