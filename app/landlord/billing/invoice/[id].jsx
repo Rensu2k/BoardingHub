@@ -1,9 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { useState } from "react";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { useCallback, useState } from "react";
 import {
   Alert,
   Dimensions,
+  Image,
+  Modal,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
@@ -14,6 +16,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { ThemedText } from "@/components/ThemedText";
 import { Colors } from "@/constants/Colors";
 import { useColorScheme } from "@/hooks/useColorScheme";
+import { getBillById, getLandlordPaymentProofs, reviewPaymentProof } from "@/utils/billingHelpers";
 
 const { width } = Dimensions.get("window");
 
@@ -23,38 +26,99 @@ export default function InvoiceDetailScreen() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
 
-  // Mock invoice data - replace with Firebase data later
-  const invoice = {
-    id: id,
-    invoiceNumber: "INV-2024-001",
-    tenantName: "Anna Garcia",
-    tenantId: "t1",
-    roomNumber: "101",
-    property: "Sunset Apartments",
-    propertyId: "p1",
-    billingPeriod: "January 2024",
-    issueDate: "2024-01-15",
-    dueDate: "2024-02-15",
-    status: "pending",
-    totalAmount: 2800,
-    paidAmount: 0,
-    balance: 2800,
-    lineItems: [
-      {
-        id: "1",
-        description: "Monthly Rent",
-        amount: 2800,
-        category: "rent",
-      },
-    ],
-    payments: [],
-    notes: "Monthly rent for January 2024. Due by end of month.",
-    createdBy: "Landlord",
-    createdAt: "2024-01-15T10:30:00Z",
-    updatedAt: "2024-01-15T10:30:00Z",
-  };
-
+  const [invoice, setInvoice] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentProof, setPaymentProof] = useState(null);
+  const [showProofModal, setShowProofModal] = useState(false);
+
+  // Load invoice data from Firebase
+  const loadInvoiceData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      if (!id) {
+        throw new Error("No invoice ID provided");
+      }
+
+      const [invoiceData, paymentProofs] = await Promise.all([
+        getBillById(id),
+        getLandlordPaymentProofs()
+      ]);
+
+      // Find payment proof for this specific bill
+      const billProof = paymentProofs.find(proof => proof.billId === id);
+      setPaymentProof(billProof || null);
+
+      // Process the invoice data to match the expected format
+      const processedInvoice = {
+        id: invoiceData.id,
+        invoiceNumber: invoiceData.invoiceId || `INV-${invoiceData.id}`,
+        tenantName: invoiceData.tenantName,
+        tenantId: invoiceData.tenantId,
+        roomNumber: invoiceData.roomNumber,
+        property: invoiceData.property,
+        propertyId: invoiceData.propertyId,
+        billingPeriod: invoiceData.billingPeriod
+          ? `${invoiceData.billingPeriod.month} ${invoiceData.billingPeriod.year}`
+          : "Unknown Period",
+        issueDate:
+          invoiceData.createdAt?.toDate?.()?.toISOString?.()?.split("T")[0] ||
+          invoiceData.createdAt ||
+          new Date().toISOString().split("T")[0],
+        dueDate: invoiceData.dueDate,
+        status: invoiceData.status || "pending",
+        totalAmount: invoiceData.amount || 0,
+        paidAmount: invoiceData.status === "paid" ? invoiceData.amount || 0 : 0,
+        balance: invoiceData.status === "paid" ? 0 : invoiceData.amount || 0,
+        lineItems: [
+          {
+            id: "1",
+            description: "Monthly Rent",
+            amount: invoiceData.baseRent || 0,
+            category: "rent",
+          },
+          ...(invoiceData.utilityCharges > 0
+            ? [
+                {
+                  id: "2",
+                  description: "Utility Charges",
+                  amount: invoiceData.utilityCharges,
+                  category: "utilities",
+                },
+              ]
+            : []),
+        ],
+        payments: invoiceData.paymentProofs || [],
+        notes: invoiceData.notes || "No additional notes.",
+        createdBy: "Landlord",
+        createdAt:
+          invoiceData.createdAt?.toDate?.()?.toISOString?.() ||
+          invoiceData.createdAt ||
+          new Date().toISOString(),
+        updatedAt:
+          invoiceData.updatedAt?.toDate?.()?.toISOString?.() ||
+          invoiceData.updatedAt ||
+          new Date().toISOString(),
+      };
+
+      setInvoice(processedInvoice);
+    } catch (error) {
+      console.error("Error loading invoice data:", error);
+      setError(`Failed to load invoice details: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  }, [id]);
+
+  // Load data when screen is focused
+  useFocusEffect(
+    useCallback(() => {
+      loadInvoiceData();
+    }, [loadInvoiceData])
+  );
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -64,14 +128,18 @@ export default function InvoiceDetailScreen() {
         return { bg: "#FF3B3020", text: "#FF3B30" };
       case "pending":
         return { bg: "#FF950020", text: "#FF9500" };
+      case "proof_submitted":
+        return { bg: "#5856D620", text: "#5856D6" };
       default:
         return { bg: colors.card, text: colors.text };
     }
   };
 
-  const statusColors = getStatusColor(invoice.status);
+  // Remove this line - statusColors will be calculated in the render after null check
 
   const handleMarkAsPaid = () => {
+    if (!invoice) return;
+
     Alert.alert(
       "Mark as Paid",
       `Mark invoice ${invoice.invoiceNumber} as paid?`,
@@ -97,6 +165,8 @@ export default function InvoiceDetailScreen() {
   };
 
   const handleSendReminder = () => {
+    if (!invoice) return;
+
     Alert.alert(
       "Send Reminder",
       `Send payment reminder to ${invoice.tenantName}?`,
@@ -109,6 +179,118 @@ export default function InvoiceDetailScreen() {
       ]
     );
   };
+
+  const handleViewProof = () => {
+    if (paymentProof) {
+      setShowProofModal(true);
+    } else {
+      Alert.alert("No Proof Found", "No payment proof found for this bill.");
+    }
+  };
+
+  const handleReviewProof = async (action) => {
+    if (!paymentProof) return;
+
+    const actionText = action === "approve" ? "approve" : "reject";
+    Alert.alert(
+      `${actionText.charAt(0).toUpperCase() + actionText.slice(1)} Proof`,
+      `Are you sure you want to ${actionText} this payment proof?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: actionText.charAt(0).toUpperCase() + actionText.slice(1),
+          style: action === "reject" ? "destructive" : "default",
+          onPress: async () => {
+            try {
+              await reviewPaymentProof(paymentProof.id, action);
+              Alert.alert("Success", `Payment proof ${action}d successfully!`);
+              setShowProofModal(false);
+              // Reload data to reflect changes
+              loadInvoiceData();
+            } catch (error) {
+              Alert.alert("Error", `Failed to ${actionText} payment proof. Please try again.`);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // Show loading state
+  if (loading) {
+    return (
+      <SafeAreaView
+        style={[styles.container, { backgroundColor: colors.background }]}
+      >
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => router.back()}
+          >
+            <Ionicons name="arrow-back" size={24} color={colors.text} />
+          </TouchableOpacity>
+          <ThemedText style={styles.invoiceNumber}>Loading...</ThemedText>
+        </View>
+        <View style={styles.loadingContainer}>
+          <ThemedText style={styles.loadingText}>
+            Loading invoice details...
+          </ThemedText>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <SafeAreaView
+        style={[styles.container, { backgroundColor: colors.background }]}
+      >
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => router.back()}
+          >
+            <Ionicons name="arrow-back" size={24} color={colors.text} />
+          </TouchableOpacity>
+          <ThemedText style={styles.invoiceNumber}>Error</ThemedText>
+        </View>
+        <View style={styles.errorContainer}>
+          <Ionicons name="alert-circle-outline" size={48} color="#FF3B30" />
+          <ThemedText style={styles.errorText}>{error}</ThemedText>
+          <TouchableOpacity
+            style={[styles.retryButton, { backgroundColor: colors.tint }]}
+            onPress={loadInvoiceData}
+          >
+            <ThemedText style={styles.retryButtonText}>Retry</ThemedText>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Show invoice not found state
+  if (!invoice) {
+    return (
+      <SafeAreaView
+        style={[styles.container, { backgroundColor: colors.background }]}
+      >
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => router.back()}
+          >
+            <Ionicons name="arrow-back" size={24} color={colors.text} />
+          </TouchableOpacity>
+          <ThemedText style={styles.invoiceNumber}>Not Found</ThemedText>
+        </View>
+        <View style={styles.errorContainer}>
+          <Ionicons name="document-outline" size={48} color={colors.text} />
+          <ThemedText style={styles.errorText}>Invoice not found</ThemedText>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView
@@ -143,12 +325,17 @@ export default function InvoiceDetailScreen() {
       </View>
 
       {/* Status Banner */}
-      <View style={[styles.statusBanner, { backgroundColor: statusColors.bg }]}>
+      <View
+        style={[
+          styles.statusBanner,
+          { backgroundColor: getStatusColor(invoice.status).bg },
+        ]}
+      >
         <View style={styles.statusContent}>
           <View
             style={[
               styles.statusIndicator,
-              { backgroundColor: statusColors.text },
+              { backgroundColor: getStatusColor(invoice.status).text },
             ]}
           >
             <Ionicons
@@ -165,7 +352,10 @@ export default function InvoiceDetailScreen() {
           </View>
           <View style={styles.statusText}>
             <ThemedText
-              style={[styles.statusTitle, { color: statusColors.text }]}
+              style={[
+                styles.statusTitle,
+                { color: getStatusColor(invoice.status).text },
+              ]}
             >
               {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
             </ThemedText>
@@ -404,11 +594,70 @@ export default function InvoiceDetailScreen() {
           </TouchableOpacity>
         )}
 
+        {/* View Proof Button - only show if payment proof exists */}
+        {paymentProof && (
+          <TouchableOpacity
+            style={[
+              styles.actionButton, 
+              styles.viewProofButton, 
+              { backgroundColor: paymentProof.status === "approved" ? "#34C759" : 
+                                  paymentProof.status === "rejected" ? "#FF3B30" : "#5856D6" }
+            ]}
+            onPress={handleViewProof}
+          >
+            <Ionicons 
+              name={paymentProof.status === "approved" ? "checkmark-circle-outline" :
+                    paymentProof.status === "rejected" ? "close-circle-outline" : "image-outline"} 
+              size={20} 
+              color="white" 
+            />
+            <ThemedText style={styles.actionButtonText}>
+              {paymentProof.status === "approved" ? "View Approved Proof" :
+               paymentProof.status === "rejected" ? "View Rejected Proof" : "View Proof"}
+            </ThemedText>
+          </TouchableOpacity>
+        )}
+
         <TouchableOpacity
           style={[styles.actionButton, styles.secondaryButton]}
-          onPress={() =>
-            router.push(`/landlord/tenant-profile/${invoice.tenantId}`)
-          }
+          onPress={async () => {
+            // Navigate to tenant profile
+
+            // Validate tenant ID before navigating
+            if (!invoice.tenantId) {
+              Alert.alert(
+                "Tenant Not Available",
+                "This bill has no tenant reference."
+              );
+              return;
+            }
+
+            // Note: Removed placeholder ID check since we're now using real Firebase data
+
+            // Try to verify if tenant exists before navigating
+            try {
+              const { getTenantById } = await import("@/utils/tenantHelpers");
+              const tenantData = await getTenantById(invoice.tenantId);
+
+              // If we get here, tenant exists, so navigate
+              router.push(`/landlord/tenant-profile/${invoice.tenantId}`);
+            } catch (error) {
+              console.error("Error fetching tenant:", error);
+
+              Alert.alert(
+                "Tenant Not Available",
+                `Unable to find tenant details for "${
+                  invoice.tenantName || "Unknown"
+                }".
+                
+Debug Info:
+• Tenant ID: ${invoice.tenantId}
+• Error: ${error.message}
+
+This tenant may have been removed or the bill contains invalid data.`
+              );
+            }
+          }}
         >
           <Ionicons name="person-outline" size={20} color={colors.tint} />
           <ThemedText style={[styles.actionButtonText, { color: colors.tint }]}>
@@ -416,6 +665,99 @@ export default function InvoiceDetailScreen() {
           </ThemedText>
         </TouchableOpacity>
       </View>
+
+      {/* Payment Proof Modal */}
+      <Modal
+        visible={showProofModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowProofModal(false)}
+      >
+        <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+          {/* Modal Header */}
+          <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+            <TouchableOpacity onPress={() => setShowProofModal(false)}>
+              <Ionicons name="close" size={24} color={colors.text} />
+            </TouchableOpacity>
+            <ThemedText style={styles.modalTitle}>Payment Proof</ThemedText>
+            <View style={{ width: 24 }} />
+          </View>
+
+          {paymentProof && (
+            <ScrollView style={styles.proofContent} showsVerticalScrollIndicator={false}>
+              {/* Bill Information */}
+              <View style={[styles.proofBillInfo, { backgroundColor: colors.card }]}>
+                <ThemedText style={styles.proofInvoiceId}>{invoice?.invoiceNumber}</ThemedText>
+                <ThemedText style={styles.proofAmount}>₱{paymentProof.amount?.toLocaleString()}</ThemedText>
+                <ThemedText style={styles.proofSubmittedAt}>
+                  Submitted: {new Date(paymentProof.submittedAt?.toDate?.() || paymentProof.submittedAt).toLocaleDateString()}
+                </ThemedText>
+              </View>
+
+              {/* GCash Receipt Image */}
+              <View style={[styles.proofImageContainer, { backgroundColor: colors.card }]}>
+                <ThemedText style={styles.proofImageTitle}>Payment Receipt</ThemedText>
+                <Image
+                  source={{ uri: paymentProof.imageUri }}
+                  style={styles.proofImage}
+                  resizeMode="contain"
+                />
+              </View>
+
+              {/* Additional Notes */}
+              {paymentProof.note && (
+                <View style={[styles.proofNoteContainer, { backgroundColor: colors.card }]}>
+                  <ThemedText style={styles.proofNoteTitle}>Additional Notes</ThemedText>
+                  <ThemedText style={styles.proofNoteText}>{paymentProof.note}</ThemedText>
+                </View>
+              )}
+
+              {/* Action Buttons - only show for pending proofs */}
+              {(paymentProof.status === "pending" || paymentProof.status === "pending_review") && (
+                <View style={styles.proofActions}>
+                  <TouchableOpacity
+                    style={[styles.proofActionButton, { backgroundColor: "#FF3B30" }]}
+                    onPress={() => handleReviewProof("reject")}
+                  >
+                    <Ionicons name="close-circle-outline" size={20} color="white" />
+                    <ThemedText style={styles.proofActionText}>Reject</ThemedText>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.proofActionButton, { backgroundColor: "#34C759" }]}
+                    onPress={() => handleReviewProof("approve")}
+                  >
+                    <Ionicons name="checkmark-circle-outline" size={20} color="white" />
+                    <ThemedText style={styles.proofActionText}>Approve</ThemedText>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* Status indicator for processed proofs */}
+              {(paymentProof.status === "approved" || paymentProof.status === "rejected") && (
+                <View style={styles.proofStatusIndicator}>
+                  <View style={[
+                    styles.proofStatusBadge,
+                    { backgroundColor: paymentProof.status === "approved" ? "#34C75920" : "#FF3B3020" }
+                  ]}>
+                    <Ionicons 
+                      name={paymentProof.status === "approved" ? "checkmark-circle-outline" : "close-circle-outline"} 
+                      size={20} 
+                      color={paymentProof.status === "approved" ? "#34C759" : "#FF3B30"} 
+                    />
+                    <ThemedText style={[
+                      styles.proofStatusText,
+                      { color: paymentProof.status === "approved" ? "#34C759" : "#FF3B30" }
+                    ]}>
+                      {paymentProof.status === "approved" ? "Approved" : "Rejected"}
+                    </ThemedText>
+                  </View>
+                </View>
+              )}
+            </ScrollView>
+          )}
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -681,6 +1023,145 @@ const styles = StyleSheet.create({
     backgroundColor: "#F2F2F7",
   },
   actionButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 20,
+  },
+  loadingText: {
+    fontSize: 16,
+    opacity: 0.7,
+    textAlign: "center",
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    gap: 16,
+  },
+  errorText: {
+    fontSize: 16,
+    opacity: 0.7,
+    textAlign: "center",
+    lineHeight: 22,
+  },
+  retryButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  retryButtonText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  viewProofButton: {
+    backgroundColor: "#5856D6",
+  },
+  // Payment Proof Modal Styles
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 16,
+    borderBottomWidth: 1,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  proofContent: {
+    flex: 1,
+    padding: 16,
+  },
+  proofBillInfo: {
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+    alignItems: "center",
+  },
+  proofInvoiceId: {
+    fontSize: 16,
+    fontWeight: "600",
+    marginBottom: 4,
+  },
+  proofAmount: {
+    fontSize: 24,
+    fontWeight: "bold",
+    marginBottom: 4,
+  },
+  proofSubmittedAt: {
+    fontSize: 14,
+    opacity: 0.7,
+  },
+  proofImageContainer: {
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  proofImageTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    marginBottom: 12,
+  },
+  proofImage: {
+    width: "100%",
+    height: 400,
+    borderRadius: 8,
+  },
+  proofNoteContainer: {
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  proofNoteTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    marginBottom: 8,
+  },
+  proofNoteText: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  proofActions: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 16,
+  },
+  proofActionButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    borderRadius: 8,
+    gap: 8,
+  },
+  proofActionText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  proofStatusIndicator: {
+    marginTop: 16,
+    alignItems: "center",
+  },
+  proofStatusBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  proofStatusText: {
     fontSize: 16,
     fontWeight: "600",
   },

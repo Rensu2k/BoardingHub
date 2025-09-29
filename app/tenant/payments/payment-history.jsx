@@ -1,7 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Modal,
   RefreshControl,
@@ -20,177 +21,81 @@ import { ThemedView } from "@/components/ThemedView";
 import { TenantHeader } from "@/components/tenant";
 import { Colors } from "@/constants/Colors";
 import { useColorScheme } from "@/hooks/useColorScheme";
-import { usePullRefresh } from "@/hooks/usePullRefresh";
 import { generateReceiptPDF } from "@/utils/receiptGenerator";
+import { getTenantPaymentHistory } from "@/utils/billingHelpers";
 
 export default function PaymentHistory() {
   const [searchQuery, setSearchQuery] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [selectedYear, setSelectedYear] = useState("all");
   const [downloadingReceipt, setDownloadingReceipt] = useState(null);
+  const [allPayments, setAllPayments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const router = useRouter();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
 
-  // Mock payment history data - replace with real API data
-  const allPayments = [
-    {
-      id: 1,
-      invoiceId: "INV-2023-012",
-      receiptId: "RCP-2023-012",
-      month: "December 2023",
-      amount: 4500,
-      paymentDate: "2023-12-10",
-      dueDate: "2023-12-15",
-      property: "Sunshine Apartments",
-      room: "A-101",
-      year: "2023",
-      status: "approved",
-      paymentMethod: "Bank Transfer",
-      breakdown: [
-        { item: "Monthly Rent", amount: 4000 },
-        { item: "Maintenance Fee", amount: 300 },
-        { item: "Utilities", amount: 200 },
-      ],
-      landlord: {
-        name: "Ms. Maria Santos",
-        email: "maria.santos@email.com",
-        phone: "+63 912 345 6789",
-      },
-      approvedDate: "2023-12-11",
-      notes: "Payment received and verified.",
-    },
-    {
-      id: 2,
-      invoiceId: "INV-2023-011",
-      receiptId: "RCP-2023-011",
-      month: "November 2023",
-      amount: 4500,
-      paymentDate: "2023-11-12",
-      dueDate: "2023-11-15",
-      property: "Sunshine Apartments",
-      room: "A-101",
-      year: "2023",
-      status: "approved",
-      paymentMethod: "GCash",
-      breakdown: [
-        { item: "Monthly Rent", amount: 4000 },
-        { item: "Maintenance Fee", amount: 300 },
-        { item: "Utilities", amount: 200 },
-      ],
-      landlord: {
-        name: "Ms. Maria Santos",
-        email: "maria.santos@email.com",
-        phone: "+63 912 345 6789",
-      },
-      approvedDate: "2023-11-13",
-      notes: "Payment confirmed via GCash.",
-    },
-    {
-      id: 3,
-      invoiceId: "INV-2023-010",
-      receiptId: "RCP-2023-010",
-      month: "October 2023",
-      amount: 4500,
-      paymentDate: "2023-10-14",
-      dueDate: "2023-10-15",
-      property: "Sunshine Apartments",
-      room: "A-101",
-      year: "2023",
-      status: "approved",
-      paymentMethod: "Cash",
-      breakdown: [
-        { item: "Monthly Rent", amount: 4000 },
-        { item: "Maintenance Fee", amount: 300 },
-        { item: "Utilities", amount: 200 },
-      ],
-      landlord: {
-        name: "Ms. Maria Santos",
-        email: "maria.santos@email.com",
-        phone: "+63 912 345 6789",
-      },
-      approvedDate: "2023-10-14",
-      notes: "Cash payment received at office.",
-    },
-    {
-      id: 4,
-      invoiceId: "INV-2024-001",
-      receiptId: "RCP-2024-001",
-      month: "January 2024",
-      amount: 4500,
-      paymentDate: "2024-01-10",
-      dueDate: "2024-01-15",
-      property: "Sunshine Apartments",
-      room: "A-101",
-      year: "2024",
-      status: "approved",
-      paymentMethod: "Bank Transfer",
-      breakdown: [
-        { item: "Monthly Rent", amount: 4000 },
-        { item: "Maintenance Fee", amount: 300 },
-        { item: "Utilities", amount: 200 },
-      ],
-      landlord: {
-        name: "Ms. Maria Santos",
-        email: "maria.santos@email.com",
-        phone: "+63 912 345 6789",
-      },
-      approvedDate: "2024-01-11",
-      notes: "Payment processed successfully.",
-    },
-    {
-      id: 5,
-      invoiceId: "INV-2023-009",
-      receiptId: "RCP-2023-009",
-      month: "September 2023",
-      amount: 4500,
-      paymentDate: "2023-09-08",
-      dueDate: "2023-09-15",
-      property: "Sunshine Apartments",
-      room: "A-101",
-      year: "2023",
-      status: "approved",
-      paymentMethod: "Bank Transfer",
-      breakdown: [
-        { item: "Monthly Rent", amount: 4000 },
-        { item: "Maintenance Fee", amount: 300 },
-        { item: "Utilities", amount: 200 },
-      ],
-      landlord: {
-        name: "Ms. Maria Santos",
-        email: "maria.santos@email.com",
-        phone: "+63 912 345 6789",
-      },
-      approvedDate: "2023-09-09",
-      notes: "Early payment discount applied.",
-    },
-    {
-      id: 6,
-      invoiceId: "INV-2024-002",
-      receiptId: "RCP-2024-002",
-      month: "February 2024",
-      amount: 4500,
-      paymentDate: "2024-02-12",
-      dueDate: "2024-02-15",
-      property: "Sunshine Apartments",
-      room: "A-101",
-      year: "2024",
-      status: "approved",
-      paymentMethod: "GCash",
-      breakdown: [
-        { item: "Monthly Rent", amount: 4000 },
-        { item: "Maintenance Fee", amount: 300 },
-        { item: "Utilities", amount: 200 },
-      ],
-      landlord: {
-        name: "Ms. Maria Santos",
-        email: "maria.santos@email.com",
-        phone: "+63 912 345 6789",
-      },
-      approvedDate: "2024-02-13",
-      notes: "Payment verified and approved.",
-    },
-  ];
+  // Load payment history from Firebase
+  const loadPaymentHistory = useCallback(async () => {
+    try {
+      setLoading(true);
+      const payments = await getTenantPaymentHistory();
+      
+      // Process payments to match expected format
+      const processedPayments = payments.map(payment => ({
+        id: payment.id,
+        invoiceId: payment.invoiceId,
+        receiptId: payment.receiptId,
+        month: payment.month,
+        amount: payment.amount,
+        paymentDate: payment.paymentDate,
+        dueDate: payment.dueDate,
+        property: payment.property,
+        room: payment.room,
+        year: payment.year,
+        status: payment.status,
+        paymentMethod: payment.paymentMethod,
+        breakdown: payment.breakdown || [
+          { item: "Monthly Rent", amount: payment.amount }
+        ],
+        landlord: {
+          name: "Landlord", // Could be enhanced to fetch landlord details
+          email: "",
+          phone: "",
+        },
+        approvedDate: payment.paymentDate,
+        notes: `Payment via ${payment.paymentMethod}`,
+      }));
+      
+      setAllPayments(processedPayments);
+    } catch (error) {
+      console.error("Error loading payment history:", error);
+      Alert.alert("Error", "Failed to load payment history. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Load data on screen focus
+  useFocusEffect(
+    useCallback(() => {
+      loadPaymentHistory();
+    }, [loadPaymentHistory])
+  );
+
+  // Pull to refresh
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await loadPaymentHistory();
+    } catch (error) {
+      console.error("Error loading payment history:", error);
+      Alert.alert("Error", "Failed to load payment history. Please try again.");
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadPaymentHistory]);
 
   // Filter and search payments
   const filteredPayments = useMemo(() => {
@@ -242,13 +147,6 @@ export default function PaymentHistory() {
 
     return sections;
   }, [filteredPayments]);
-
-  const refreshPayments = async () => {
-    console.log("Refreshing payment history...");
-    // Simulate API call
-  };
-
-  const { refreshing, onRefresh } = usePullRefresh(refreshPayments);
 
   const handleDownloadReceipt = useCallback(async (payment) => {
     setDownloadingReceipt(payment.id);
@@ -533,42 +431,48 @@ export default function PaymentHistory() {
         )}
       </ThemedView>
 
-      {/* Payment History List */}
-      <SectionList
-        sections={groupedPayments}
-        renderItem={renderPaymentCard}
-        renderSectionHeader={renderSectionHeader}
-        keyExtractor={(item) => item.id.toString()}
-        style={styles.paymentsList}
-        contentContainerStyle={styles.paymentsContainer}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={colors.tint}
-            colors={[colors.tint]}
-          />
-        }
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Ionicons
-              name="receipt-outline"
-              size={64}
-              color={colors.text}
-              style={{ opacity: 0.3 }}
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.tint} />
+          <ThemedText style={styles.loadingText}>Loading payment history...</ThemedText>
+        </View>
+      ) : (
+        <SectionList
+          sections={groupedPayments}
+          renderItem={renderPaymentCard}
+          renderSectionHeader={renderSectionHeader}
+          keyExtractor={(item) => item.id.toString()}
+          style={styles.paymentsList}
+          contentContainerStyle={styles.paymentsContainer}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.tint}
+              colors={[colors.tint]}
             />
-            <ThemedText style={styles.emptyTitle}>
-              No Payment History
-            </ThemedText>
-            <ThemedText style={styles.emptySubtitle}>
-              {searchQuery || selectedYear !== "all"
-                ? "Try adjusting your search or filters"
-                : "Your payment history will appear here when payments are made"}
-            </ThemedText>
-          </View>
-        }
-        showsVerticalScrollIndicator={false}
-      />
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons
+                name="receipt-outline"
+                size={48}
+                color={colors.text}
+                style={{ opacity: 0.3 }}
+              />
+              <ThemedText style={styles.emptyTitle}>
+                No Payment History
+              </ThemedText>
+              <ThemedText style={styles.emptySubtitle}>
+                {searchQuery || selectedYear !== "all"
+                  ? "Try adjusting your search or filters"
+                  : "Your payment history will appear here when payments are made"}
+              </ThemedText>
+            </View>
+          }
+          showsVerticalScrollIndicator={false}
+        />
+      )}
 
       {/* Filter Modal */}
       <Modal
@@ -898,5 +802,33 @@ const styles = StyleSheet.create({
     color: "white",
     fontSize: 16,
     fontWeight: "600",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 60,
+  },
+  loadingText: {
+    fontSize: 16,
+    opacity: 0.7,
+    textAlign: "center",
+  },
+  emptyContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 60,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    opacity: 0.6,
+    textAlign: "center",
+    lineHeight: 20,
   },
 });

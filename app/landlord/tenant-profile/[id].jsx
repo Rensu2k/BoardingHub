@@ -17,6 +17,7 @@ import { ThemedText } from "@/components/ThemedText";
 import { Colors } from "@/constants/Colors";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { getTenantById } from "@/utils/tenantHelpers";
+import { getTenantPaymentHistory } from "@/utils/billingHelpers";
 
 const { width, height } = Dimensions.get("window");
 
@@ -24,29 +25,62 @@ export default function TenantProfileScreen() {
   const [activeTab, setActiveTab] = useState("overview");
   const [tenant, setTenant] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [paymentHistory, setPaymentHistory] = useState([]);
 
   const router = useRouter();
   const { id } = useLocalSearchParams();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
 
+  // Load payment history separately for refresh
+  const loadPaymentHistory = async () => {
+    try {
+      if (id) {
+        const payments = await getTenantPaymentHistory(id);
+        setPaymentHistory(payments);
+      }
+    } catch (error) {
+      console.error("Error loading payment history:", error);
+    }
+  };
+
   // Load tenant data from Firebase
   const loadTenantData = async () => {
     try {
       setLoading(true);
+
+      if (!id) {
+        throw new Error("No tenant ID provided");
+      }
+
       const tenantData = await getTenantById(id);
+      
+      // Load real payment history from Firebase
+      await loadPaymentHistory();
+      
       setTenant({
         ...tenantData,
         // Add mock data for features not yet implemented
         deposit: tenantData.deposit || 5600,
         notes: tenantData.notes || "No additional notes available.",
         documents: tenantData.documents || [],
-        payments: tenantData.payments || [],
         maintenanceRequests: tenantData.maintenanceRequests || [],
       });
     } catch (error) {
       console.error("Error loading tenant data:", error);
-      Alert.alert("Error", "Failed to load tenant details. Please try again.");
+
+      // Show specific error message
+      let errorMessage = "Failed to load tenant details. Please try again.";
+      if (error.message === "Tenant not found") {
+        errorMessage =
+          "Tenant not found. They may have been removed or the ID is invalid.";
+      } else if (error.message === "User is not a tenant") {
+        errorMessage = "This user is not registered as a tenant.";
+      }
+
+      Alert.alert("Error", errorMessage, [
+        { text: "Go Back", onPress: () => router.back() },
+      ]);
     } finally {
       setLoading(false);
     }
@@ -61,6 +95,15 @@ export default function TenantProfileScreen() {
     }, [id])
   );
 
+  // Refresh payment history when payments tab is active
+  useFocusEffect(
+    useCallback(() => {
+      if (id && activeTab === "payments") {
+        loadPaymentHistory();
+      }
+    }, [id, activeTab])
+  );
+
   // Show loading screen
   if (loading) {
     return (
@@ -68,7 +111,9 @@ export default function TenantProfileScreen() {
         style={[styles.container, { backgroundColor: colors.background }]}
       >
         <View style={styles.loadingContainer}>
-          <ThemedText style={styles.loadingText}>Loading tenant details...</ThemedText>
+          <ThemedText style={styles.loadingText}>
+            Loading tenant details...
+          </ThemedText>
         </View>
       </SafeAreaView>
     );
@@ -81,7 +126,11 @@ export default function TenantProfileScreen() {
         style={[styles.container, { backgroundColor: colors.background }]}
       >
         <View style={styles.errorContainer}>
-          <Ionicons name="person-outline" size={48} color={colors.text + "40"} />
+          <Ionicons
+            name="person-outline"
+            size={48}
+            color={colors.text + "40"}
+          />
           <ThemedText style={styles.errorText}>Tenant not found</ThemedText>
           <TouchableOpacity
             style={[styles.retryButton, { backgroundColor: colors.tint }]}
@@ -197,7 +246,9 @@ export default function TenantProfileScreen() {
           <View style={styles.infoContent}>
             <ThemedText style={styles.infoLabel}>Lease Start</ThemedText>
             <ThemedText style={styles.infoValue}>
-              {tenant.leaseStart ? new Date(tenant.leaseStart).toLocaleDateString() : "Not set"}
+              {tenant.leaseStart
+                ? new Date(tenant.leaseStart).toLocaleDateString()
+                : "Not set"}
             </ThemedText>
           </View>
         </View>
@@ -209,7 +260,9 @@ export default function TenantProfileScreen() {
           <View style={styles.infoContent}>
             <ThemedText style={styles.infoLabel}>Lease End</ThemedText>
             <ThemedText style={styles.infoValue}>
-              {tenant.leaseEnd ? new Date(tenant.leaseEnd).toLocaleDateString() : "Not set"}
+              {tenant.leaseEnd
+                ? new Date(tenant.leaseEnd).toLocaleDateString()
+                : "Not set"}
             </ThemedText>
           </View>
         </View>
@@ -295,16 +348,24 @@ export default function TenantProfileScreen() {
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <ThemedText style={styles.sectionTitle}>Payment History</ThemedText>
-          <TouchableOpacity
-            style={styles.addButton}
-            onPress={() => handleAction("create-bill")}
-          >
-            <Ionicons name="add" size={20} color={colors.tint} />
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity
+              style={styles.addButton}
+              onPress={loadPaymentHistory}
+            >
+              <Ionicons name="refresh" size={20} color={colors.text} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.addButton}
+              onPress={() => handleAction("create-bill")}
+            >
+              <Ionicons name="add" size={20} color={colors.tint} />
+            </TouchableOpacity>
+          </View>
         </View>
 
-        {tenant.payments && tenant.payments.length > 0 ? (
-          tenant.payments.map((payment) => (
+        {paymentHistory && paymentHistory.length > 0 ? (
+          paymentHistory.map((payment) => (
             <View
               key={payment.id}
               style={[styles.paymentCard, { backgroundColor: colors.card }]}
@@ -312,10 +373,13 @@ export default function TenantProfileScreen() {
               <View style={styles.paymentHeader}>
                 <View>
                   <ThemedText style={styles.paymentType}>
-                    {payment.type}
+                    {payment.month} - {payment.property}
                   </ThemedText>
                   <ThemedText style={styles.paymentDate}>
-                    {new Date(payment.date).toLocaleDateString()}
+                    Paid: {new Date(payment.paymentDate).toLocaleDateString()}
+                  </ThemedText>
+                  <ThemedText style={styles.paymentDate}>
+                    Due: {new Date(payment.dueDate).toLocaleDateString()}
                   </ThemedText>
                 </View>
                 <View style={styles.paymentRight}>
@@ -326,13 +390,22 @@ export default function TenantProfileScreen() {
                 </View>
               </View>
               <ThemedText style={styles.paymentMethod}>
-                Via {payment.method}
+                Via {payment.paymentMethod}
               </ThemedText>
+              {payment.receiptId && (
+                <ThemedText style={styles.receiptId}>
+                  Receipt: {payment.receiptId}
+                </ThemedText>
+              )}
             </View>
           ))
         ) : (
           <View style={styles.emptyState}>
-            <Ionicons name="card-outline" size={48} color={colors.text + "40"} />
+            <Ionicons
+              name="card-outline"
+              size={48}
+              color={colors.text + "40"}
+            />
             <ThemedText style={styles.emptyStateText}>
               No payment history available
             </ThemedText>
@@ -410,7 +483,11 @@ export default function TenantProfileScreen() {
           ))
         ) : (
           <View style={styles.emptyState}>
-            <Ionicons name="document-outline" size={48} color={colors.text + "40"} />
+            <Ionicons
+              name="document-outline"
+              size={48}
+              color={colors.text + "40"}
+            />
             <ThemedText style={styles.emptyStateText}>
               No documents uploaded yet
             </ThemedText>
@@ -482,7 +559,11 @@ export default function TenantProfileScreen() {
           ))
         ) : (
           <View style={styles.emptyState}>
-            <Ionicons name="construct-outline" size={48} color={colors.text + "40"} />
+            <Ionicons
+              name="construct-outline"
+              size={48}
+              color={colors.text + "40"}
+            />
             <ThemedText style={styles.emptyStateText}>
               No maintenance requests yet
             </ThemedText>
@@ -529,7 +610,9 @@ export default function TenantProfileScreen() {
           <View style={styles.headerInfo}>
             <ThemedText style={styles.tenantName}>{tenant.name}</ThemedText>
             <ThemedText style={styles.roomInfo}>
-              {tenant.roomNumber ? `Room ${tenant.roomNumber}` : "No room assigned"}
+              {tenant.roomNumber
+                ? `Room ${tenant.roomNumber}`
+                : "No room assigned"}
             </ThemedText>
           </View>
           <StatusChip status={tenant.status} />
@@ -739,6 +822,12 @@ const styles = StyleSheet.create({
   paymentMethod: {
     fontSize: 14,
     opacity: 0.7,
+  },
+  receiptId: {
+    fontSize: 12,
+    opacity: 0.6,
+    marginTop: 4,
+    fontFamily: "monospace",
   },
   documentCard: {
     flexDirection: "row",
